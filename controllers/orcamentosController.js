@@ -39,6 +39,30 @@ const STATUS_VALIDOS = [
   "Cancelado"
 ];
 
+function normalizeJsonItens(jsonItens) {
+  if (jsonItens === undefined || jsonItens === null || jsonItens === "") {
+    return { parsed: null, error: null };
+  }
+
+  if (Array.isArray(jsonItens)) {
+    return { parsed: jsonItens, error: null };
+  }
+
+  if (typeof jsonItens === "string") {
+    try {
+      const parsed = JSON.parse(jsonItens);
+      if (!Array.isArray(parsed)) {
+        return { parsed: null, error: "json_itens deve ser array" };
+      }
+      return { parsed, error: null };
+    } catch (error) {
+      return { parsed: null, error: "json_itens inválido" };
+    }
+  }
+
+  return { parsed: null, error: "json_itens deve ser array" };
+}
+
 async function tableExists(table) {
   const pool = getPool();
   const [rows] = await pool.query(
@@ -63,17 +87,40 @@ async function clienteExists(clienteId) {
 }
 
 async function list(req, res) {
-  const limit = Number(req.query.limit || req.query.perPage || 10);
-  const page = Math.max(1, Number(req.query.page || 1));
+  const role = String(req.user?.role || "").toUpperCase();
+  const isAdmin = role === "MASTER" || role === "ADMIN";
+  const query = { ...req.query };
+  if (!isAdmin && req.user?.userId) {
+    query.usuario_id__eq = req.user.userId;
+  }
 
-  const { data, total } = await baseService.listWithFilters(TABLE, req.query);
+  const limit = Number(query.limit || query.perPage || 10);
+  const page = Math.max(1, Number(query.page || 1));
 
-  const include = req.query.include ? String(req.query.include).split(",") : [];
+  const { data, total } = await baseService.listWithFilters(TABLE, query);
+
+  const include = query.include ? String(query.include).split(",") : [];
   const includeClientes = include.includes("clientes");
   const includeEmpresas = include.includes("empresas");
   const includeVeiculos = include.includes("veiculos");
 
   const pool = getPool();
+
+  const responsavelIds = [
+    ...new Set(data.map((row) => row.usuario_id).filter(Boolean))
+  ];
+  if (responsavelIds.length > 0) {
+    const [rows] = await pool.query(
+      `SELECT id, name, email, role FROM users WHERE id IN (${responsavelIds
+        .map(() => "?")
+        .join(",")})`,
+      responsavelIds
+    );
+    const map = new Map(rows.map((row) => [row.id, row]));
+    data.forEach((row) => {
+      row.responsavel = map.get(row.usuario_id) || null;
+    });
+  }
 
   if (includeClientes && data.length > 0) {
     const ids = [...new Set(data.map((row) => row.cliente_id).filter(Boolean))];
@@ -150,6 +197,22 @@ async function getById(req, res) {
   const item = rows[0];
   if (!item) return res.status(404).json({ message: "Not found" });
 
+  const role = String(req.user?.role || "").toUpperCase();
+  const isAdmin = role === "MASTER" || role === "ADMIN";
+  if (!isAdmin && req.user?.userId && item.usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  if (item.usuario_id) {
+    const [users] = await pool.query(
+      "SELECT id, name, email, role FROM users WHERE id = ?",
+      [item.usuario_id]
+    );
+    item.responsavel = users[0] || null;
+  } else {
+    item.responsavel = null;
+  }
+
   if (item.cliente_id) {
     const [clientes] = await pool.query(
       "SELECT fantasia, razao_social, email FROM clientes WHERE id = ?",
@@ -205,20 +268,25 @@ async function create(req, res) {
     return res.status(400).json({ message: "status inválido" });
   }
 
-  if (req.body.json_itens && !Array.isArray(req.body.json_itens)) {
-    return res.status(400).json({ message: "json_itens deve ser array" });
+  const { parsed: jsonItensParsed, error: jsonItensError } = normalizeJsonItens(
+    req.body.json_itens
+  );
+  if (jsonItensError) {
+    return res.status(400).json({ message: jsonItensError });
   }
 
   const numeroSequencial = await getProximoNumeroSequencial();
 
   const { subtotal, desconto, total } = calcularTotais(
-    req.body.json_itens,
+    jsonItensParsed,
     req.body.desconto || 0
   );
 
   const dados = {
     ...req.body,
+    json_itens: jsonItensParsed ? JSON.stringify(jsonItensParsed) : null,
     numero_sequencial: numeroSequencial,
+    usuario_id: req.user?.userId || null,
     subtotal,
     desconto,
     total
@@ -233,18 +301,24 @@ async function create(req, res) {
 async function update(req, res) {
   const dados = { ...req.body };
 
-  if (dados.json_itens && !Array.isArray(dados.json_itens)) {
-    return res.status(400).json({ message: "json_itens deve ser array" });
+  const { parsed: jsonItensParsed, error: jsonItensError } = normalizeJsonItens(
+    dados.json_itens
+  );
+  if (jsonItensError) {
+    return res.status(400).json({ message: jsonItensError });
   }
 
-  if (dados.json_itens) {
+  if (jsonItensParsed) {
     const { subtotal, desconto, total } = calcularTotais(
-      dados.json_itens,
+      jsonItensParsed,
       dados.desconto || 0
     );
     dados.subtotal = subtotal;
     dados.desconto = desconto || 0;
     dados.total = total;
+    dados.json_itens = JSON.stringify(jsonItensParsed);
+  } else if (dados.json_itens !== undefined) {
+    dados.json_itens = null;
   }
 
   const ok = await baseService.update(TABLE, req.params.id, dados);

@@ -1,5 +1,4 @@
 import { getPool } from "../db.js";
-import { transporter } from "../src/config/email.js";
 
 async function createUser(req, res) {
   const { name, email, password, role = 'USER', employee = {} } = req.body || {};
@@ -33,13 +32,6 @@ async function createUser(req, res) {
     );
 
     await connection.commit();
-
-    await transporter.sendMail({
-      from: process.env.SMTP_USER,
-      to: email,
-      subject: 'Seu acesso foi criado',
-      text: `Olá ${name}, seu usuário foi criado.\nEmail: ${email}\nSenha: ${password}`,
-    });
 
     return res.status(201).json({ id: userId });
   } catch (err) {

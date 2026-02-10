@@ -53,11 +53,29 @@ async function listWithFilters(table, query = {}) {
     columns.forEach(() => params.push(`%${q}%`));
   }
 
+  const reservedKeys = new Set([
+    "page",
+    "limit",
+    "perPage",
+    "q",
+    "sortBy",
+    "sortDir",
+    "include"
+  ]);
+
   Object.entries(query).forEach(([key, value]) => {
-    if (!columns.includes(key)) return;
+    if (reservedKeys.has(key)) return;
+    const isExact = key.endsWith("__eq");
+    const columnKey = isExact ? key.slice(0, -4) : key;
+    if (!columns.includes(columnKey)) return;
     if (value === undefined || value === null || value === "") return;
-    whereParts.push(`\`${key}\` LIKE ?`);
-    params.push(`%${value}%`);
+    if (isExact) {
+      whereParts.push(`\`${columnKey}\` = ?`);
+      params.push(value);
+    } else {
+      whereParts.push(`\`${columnKey}\` LIKE ?`);
+      params.push(`%${value}%`);
+    }
   });
 
   const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
