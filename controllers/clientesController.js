@@ -6,7 +6,7 @@ async function list(req, res) {
   const limit = Number(req.query.limit || req.query.perPage || 10);
   const page = Math.max(1, Number(req.query.page || 1));
   const offset = (page - 1) * limit;
-  const { data, total } = await baseService.list(TABLE, limit, offset);
+  const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
   res.json({ data, page, perPage: limit, total, totalPages });
 }

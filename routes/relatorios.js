@@ -1,5 +1,5 @@
 import express from "express";
-import * as controller from "../controllers/usersController.js";
+import * as controller from "../controllers/relatoriosController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
 
 const router = express.Router();
@@ -8,6 +8,6 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 router.use(authMiddleware);
 
-router.post("/", asyncHandler(controller.createUser));
+router.get("/orcamentos", asyncHandler(controller.orcamentos));
 
 export default router;

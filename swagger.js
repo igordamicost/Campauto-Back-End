@@ -12,12 +12,21 @@ const swaggerDefinition = {
       url: "http://localhost:3000",
       description: "Local"
     }
-  ]
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT"
+      }
+    }
+  }
 };
 
 const options = {
   swaggerDefinition,
-  apis: ["./routes/*.js"]
+  apis: ["./swagger/*.js"]
 };
 
 export default swaggerJSDoc(options);

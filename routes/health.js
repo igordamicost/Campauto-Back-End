@@ -3,15 +3,6 @@ import { transporter } from "../src/config/email.js";
 
 const router = express.Router();
 
-/**
- * @swagger
- * /health/email:
- *   get:
- *     summary: Envia email de teste
- *     responses:
- *       200:
- *         description: Email enviado
- */
 router.get("/email", async (req, res) => {
   try {
     await transporter.sendMail({

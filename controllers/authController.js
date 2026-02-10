@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { getPool } from "../db.js";
 
 async function login(req, res) {
@@ -32,8 +33,8 @@ async function login(req, res) {
 
   if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
 
-  const { password: _pw, ...safeUser } = user;
-  return res.json({ user: safeUser });
+  const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET);
+  return res.json({ token });
 }
 
 export { login };

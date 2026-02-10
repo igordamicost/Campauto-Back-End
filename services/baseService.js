@@ -35,6 +35,54 @@ async function list(table, limit = 10, offset = 0) {
   return { data: rows, total: Number(countRow.total) };
 }
 
+async function listWithFilters(table, query = {}) {
+  const pool = getPool();
+  const columns = await getTableColumns(table);
+
+  const limit = Number(query.limit || query.perPage || 10);
+  const page = Math.max(1, Number(query.page || 1));
+  const offset = (page - 1) * limit;
+
+  const whereParts = [];
+  const params = [];
+
+  const q = query.q ? String(query.q).trim() : "";
+  if (q) {
+    const likeParts = columns.map((col) => `\`${col}\` LIKE ?`);
+    whereParts.push(`(${likeParts.join(" OR ")})`);
+    columns.forEach(() => params.push(`%${q}%`));
+  }
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (!columns.includes(key)) return;
+    if (value === undefined || value === null || value === "") return;
+    whereParts.push(`\`${key}\` LIKE ?`);
+    params.push(`%${value}%`);
+  });
+
+  const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+  const sortBy = columns.includes(query.sortBy) ? query.sortBy : "id";
+  const sortDir =
+    String(query.sortDir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+
+  const dataSql = `
+    SELECT * FROM \`${table}\`
+    ${whereSql}
+    ORDER BY \`${sortBy}\` ${sortDir}
+    LIMIT ? OFFSET ?
+  `;
+  const countSql = `
+    SELECT COUNT(*) AS total FROM \`${table}\`
+    ${whereSql}
+  `;
+
+  const [rows] = await pool.query(dataSql, [...params, limit, offset]);
+  const [[countRow]] = await pool.query(countSql, params);
+
+  return { data: rows, total: Number(countRow.total) };
+}
+
 async function getById(table, id) {
   const pool = getPool();
   const [rows] = await pool.query(
@@ -93,4 +141,4 @@ async function remove(table, id) {
   return result.affectedRows > 0;
 }
 
-export { list, getById, create, update, remove };
+export { list, listWithFilters, getById, create, update, remove };
