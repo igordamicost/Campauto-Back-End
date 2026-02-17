@@ -8,6 +8,9 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 router.use(authMiddleware);
 
+router.get("/", asyncHandler(controller.list));
 router.post("/", asyncHandler(controller.createUser));
+router.put("/:id", asyncHandler(controller.updateUser));
+router.delete("/:id", asyncHandler(controller.removeUser));
 
 export default router;
