@@ -9,8 +9,8 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: "http://localhost:3000",
-      description: "Local"
+      url: process.env.API_URL || "http://localhost:3000",
+      description: process.env.NODE_ENV === "production" ? "Produção" : "Local"
     }
   ],
   components: {
