@@ -2,7 +2,7 @@
  * @openapi
  * /relatorios/orcamentos:
  *   get:
- *     summary: Relatório de orçamentos para KPIs e gráficos financeiros
+ *     summary: Relatório de orçamentos com KPIs e agregações (comparativo mensal, evolução diária)
  *     tags: [Relatórios]
  *     security:
  *       - bearerAuth: []
@@ -77,6 +77,58 @@
  *                           empresa:
  *                             type: string
  *                             nullable: true
+ *                 agregacoes:
+ *                   type: object
+ *                   properties:
+ *                     comparativo_mensal:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           mes:
+ *                             type: integer
+ *                             description: 0-11 (Janeiro=0)
+ *                           mes_nome:
+ *                             type: string
+ *                           ano:
+ *                             type: integer
+ *                           total:
+ *                             type: number
+ *                           quantidade:
+ *                             type: integer
+ *                     evolucao_diaria:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           dia:
+ *                             type: integer
+ *                           mes:
+ *                             type: integer
+ *                           ano:
+ *                             type: integer
+ *                           data:
+ *                             type: string
+ *                             format: date
+ *                           total:
+ *                             type: number
+ *                           quantidade:
+ *                             type: integer
+ *                     kpis:
+ *                       type: object
+ *                       properties:
+ *                         total_mes_atual:
+ *                           type: number
+ *                         total_ano_atual:
+ *                           type: number
+ *                         ticket_medio_mes_atual:
+ *                           type: number
+ *                         quantidade_mes_atual:
+ *                           type: integer
+ *                         mes_atual:
+ *                           type: integer
+ *                         ano_atual:
+ *                           type: integer
  *       400:
  *         description: Formato de data inválido
  *       401:

@@ -1,12 +1,110 @@
 import { getPool } from "../db.js";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MESES_NOME = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
 
 function isValidDate(str) {
   if (!str || typeof str !== "string") return false;
   if (!DATE_REGEX.test(str)) return false;
   const d = new Date(str);
   return !isNaN(d.getTime());
+}
+
+function totalOrcamento(orcamento) {
+  const itens = orcamento?.json_itens;
+  if (!Array.isArray(itens)) return 0;
+  return itens.reduce((sum, i) => sum + (Number(i?.total) || 0), 0);
+}
+
+function buildAgregacoes(data, dataFim, dataInicio) {
+  const now = new Date();
+  const anoRef = dataFim
+    ? new Date(dataFim + "T12:00:00").getFullYear()
+    : now.getFullYear();
+  const mesRef = dataFim
+    ? new Date(dataFim + "T12:00:00").getMonth()
+    : now.getMonth();
+
+  const comparativoMap = new Map();
+  for (let m = 0; m < 12; m++) {
+    comparativoMap.set(m, { total: 0, quantidade: 0 });
+  }
+
+  const evolucaoMap = new Map();
+  const ultimoDia = new Date(anoRef, mesRef + 1, 0).getDate();
+  for (let d = 1; d <= ultimoDia; d++) {
+    evolucaoMap.set(d, { total: 0, quantidade: 0 });
+  }
+
+  let totalAno = 0;
+  let totalMes = 0;
+  let quantidadeMes = 0;
+
+  for (const o of data) {
+    const total = Math.round(totalOrcamento(o) * 100) / 100;
+    const dataParts = (o.data || "").split("-").map(Number);
+    if (dataParts.length !== 3) continue;
+
+    const [ano, mes, dia] = dataParts;
+    const mesJs = mes - 1;
+
+    if (ano === anoRef) {
+      const cm = comparativoMap.get(mesJs) || { total: 0, quantidade: 0 };
+      cm.total += total;
+      cm.quantidade += 1;
+      comparativoMap.set(mesJs, cm);
+      totalAno += total;
+
+      if (mesJs === mesRef) {
+        totalMes += total;
+        quantidadeMes += 1;
+        const ed = evolucaoMap.get(dia) || { total: 0, quantidade: 0 };
+        ed.total += total;
+        ed.quantidade += 1;
+        evolucaoMap.set(dia, ed);
+      }
+    }
+  }
+
+  const comparativo_mensal = [];
+  for (let m = 0; m < 12; m++) {
+    const cm = comparativoMap.get(m) || { total: 0, quantidade: 0 };
+    comparativo_mensal.push({
+      mes: m,
+      mes_nome: MESES_NOME[m],
+      ano: anoRef,
+      total: Math.round(cm.total * 100) / 100,
+      quantidade: cm.quantidade,
+    });
+  }
+
+  const evolucao_diaria = [];
+  for (let d = 1; d <= ultimoDia; d++) {
+    const ed = evolucaoMap.get(d) || { total: 0, quantidade: 0 };
+    const dataStr = `${anoRef}-${String(mesRef + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    evolucao_diaria.push({
+      dia: d,
+      mes: mesRef,
+      ano: anoRef,
+      data: dataStr,
+      total: Math.round(ed.total * 100) / 100,
+      quantidade: ed.quantidade,
+    });
+  }
+
+  const kpis = {
+    total_mes_atual: Math.round(totalMes * 100) / 100,
+    total_ano_atual: Math.round(totalAno * 100) / 100,
+    ticket_medio_mes_atual: quantidadeMes > 0 ? Math.round((totalMes / quantidadeMes) * 100) / 100 : 0,
+    quantidade_mes_atual: quantidadeMes,
+    mes_atual: mesRef,
+    ano_atual: anoRef,
+  };
+
+  return { comparativo_mensal, evolucao_diaria, kpis };
 }
 
 function normalizeJsonItens(jsonItens) {
@@ -127,7 +225,9 @@ async function orcamentos(req, res) {
     return item;
   });
 
-  res.json({ data });
+  const agregacoes = buildAgregacoes(data, data_fim, data_inicio);
+
+  res.json({ data, agregacoes });
 }
 
 export { orcamentos };
