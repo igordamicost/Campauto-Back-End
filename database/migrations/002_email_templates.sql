@@ -5,7 +5,7 @@ USE campauto;
 
 CREATE TABLE IF NOT EXISTS email_templates (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  owner_master_user_id BIGINT NOT NULL,
+  owner_master_user_id INT NOT NULL,
   template_key ENUM('FIRST_ACCESS','RESET') NOT NULL,
   name VARCHAR(120) NOT NULL,
   subject VARCHAR(160) NOT NULL,
