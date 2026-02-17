@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
 
 async function list(req, res) {
@@ -14,12 +15,24 @@ async function list(req, res) {
     whereParts.push("(u.name LIKE ? OR u.email LIKE ? OR e.full_name LIKE ?)");
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
+  if (req.query.role) {
+    whereParts.push("u.role = ?");
+    params.push(req.query.role);
+  }
+  if (req.query.blocked !== undefined && req.query.blocked !== "") {
+    const blocked = String(req.query.blocked).toLowerCase();
+    if (blocked === "1" || blocked === "true") {
+      whereParts.push("u.blocked = 1");
+    } else if (blocked === "0" || blocked === "false") {
+      whereParts.push("u.blocked = 0");
+    }
+  }
 
   const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
   const [rows] = await pool.query(
     `
-      SELECT u.id, u.name, u.email, u.role, u.created_at,
+      SELECT u.id, u.name, u.email, u.role, u.blocked, u.created_at,
              e.full_name AS employee_name, e.phone AS employee_phone
       FROM users u
       LEFT JOIN employees e ON e.user_id = u.id
@@ -42,6 +55,26 @@ async function list(req, res) {
 
   const totalPages = Math.ceil(total / limit) || 1;
   res.json({ data: rows, page, perPage: limit, total, totalPages });
+}
+
+async function getById(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "Invalid id" });
+
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `
+      SELECT u.id, u.name, u.email, u.role, u.blocked, u.created_at,
+             e.full_name AS employee_name, e.phone AS employee_phone
+      FROM users u
+      LEFT JOIN employees e ON e.user_id = u.id
+      WHERE u.id = ?
+    `,
+    [id]
+  );
+  const user = rows[0];
+  if (!user) return res.status(404).json({ message: "User not found" });
+  res.json(user);
 }
 
 async function createUser(req, res) {
@@ -179,7 +212,46 @@ async function removeUser(req, res) {
   if (result.affectedRows === 0) {
     return res.status(404).json({ message: 'User not found' });
   }
-  res.json({ message: 'Deleted' });
+  res.json({ message: "Deleted" });
 }
 
-export { list, createUser, updateUser, removeUser };
+async function blockUser(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "Invalid id" });
+
+  const pool = getPool();
+  const [rows] = await pool.query("SELECT id, blocked FROM users WHERE id = ?", [
+    id,
+  ]);
+  const user = rows[0];
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const newBlocked = user.blocked ? 0 : 1;
+  await pool.query("UPDATE users SET blocked = ? WHERE id = ?", [newBlocked, id]);
+
+  res.json({
+    message: newBlocked ? "User blocked" : "User unblocked",
+    blocked: Boolean(newBlocked),
+  });
+}
+
+async function resetPasswordUser(req, res) {
+  const id = Number(req.params.id);
+  const { password } = req.body || {};
+
+  if (!id) return res.status(400).json({ message: "Invalid id" });
+  if (!password || String(password).length < 6) {
+    return res.status(400).json({ message: "Password must have at least 6 characters" });
+  }
+
+  const pool = getPool();
+  const [rows] = await pool.query("SELECT id FROM users WHERE id = ?", [id]);
+  if (!rows.length) return res.status(404).json({ message: "User not found" });
+
+  const hash = await bcrypt.hash(password, 10);
+  await pool.query("UPDATE users SET password = ? WHERE id = ?", [hash, id]);
+
+  res.json({ message: "Password reset successfully" });
+}
+
+export { list, getById, createUser, updateUser, removeUser, blockUser, resetPasswordUser };

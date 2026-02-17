@@ -12,7 +12,7 @@ async function login(req, res) {
   const pool = getPool();
   const [rows] = await pool.query(
     `
-      SELECT id, name, email, role, password
+      SELECT id, name, email, role, password, blocked
       FROM users
       WHERE email = ?
       LIMIT 1
@@ -22,6 +22,7 @@ async function login(req, res) {
 
   const user = rows[0];
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+  if (user.blocked) return res.status(403).json({ message: 'Account is blocked' });
 
   let ok = false;
   if (user.password && user.password.startsWith('$2')) {

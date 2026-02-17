@@ -36,6 +36,7 @@ async function ensureColumns() {
 
   await ensureColumn("cpf", "cpf VARCHAR(20) NULL");
   await ensureColumn("telefone", "telefone VARCHAR(30) NULL");
+  await ensureColumn("blocked", "blocked TINYINT(1) DEFAULT 0");
 }
 
 async function seedMasterUser() {

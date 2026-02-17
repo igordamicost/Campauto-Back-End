@@ -10,6 +10,9 @@ router.use(authMiddleware);
 
 router.get("/", asyncHandler(controller.list));
 router.post("/", asyncHandler(controller.createUser));
+router.get("/:id", asyncHandler(controller.getById));
+router.patch("/:id/block", asyncHandler(controller.blockUser));
+router.post("/:id/reset-password", asyncHandler(controller.resetPasswordUser));
 router.put("/:id", asyncHandler(controller.updateUser));
 router.delete("/:id", asyncHandler(controller.removeUser));
 

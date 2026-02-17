@@ -27,9 +27,42 @@
  *         schema:
  *           type: string
  *         description: Busca por nome, email ou funcionário
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [MASTER, USER]
+ *         description: Filtrar por role
+ *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: ["0", "1", "true", "false"]
+ *         description: Filtrar por bloqueado
  *     responses:
  *       200:
  *         description: Lista de usuários
+ */
+
+/**
+ * @openapi
+ * /users/{id}:
+ *   get:
+ *     summary: Busca usuário por ID
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Usuário encontrado
+ *       404:
+ *         description: Usuário não encontrado
  */
 
 /**
@@ -134,6 +167,61 @@
  *     responses:
  *       200:
  *         description: Usuário removido
+ *       404:
+ *         description: Usuário não encontrado
+ */
+
+/**
+ * @openapi
+ * /users/{id}/block:
+ *   patch:
+ *     summary: Bloquear ou desbloquear usuário
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Status invertido (bloqueado/desbloqueado)
+ *       404:
+ *         description: Usuário não encontrado
+ */
+
+/**
+ * @openapi
+ * /users/{id}/reset-password:
+ *   post:
+ *     summary: Redefinir senha do usuário
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Senha redefinida
+ *       400:
+ *         description: Senha inválida
  *       404:
  *         description: Usuário não encontrado
  */
