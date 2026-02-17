@@ -69,7 +69,8 @@
  * @openapi
  * /users:
  *   post:
- *     summary: Cria usuário e funcionário
+ *     summary: Cria usuário e funcionário (master only)
+ *     description: Usuário recebe e-mail para definir senha no primeiro acesso.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -79,13 +80,11 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, email, password, employee]
+ *             required: [name, email, employee]
  *             properties:
  *               name:
  *                 type: string
  *               email:
- *                 type: string
- *               password:
  *                 type: string
  *               role:
  *                 type: string
@@ -100,9 +99,13 @@
  *                     type: string
  *     responses:
  *       201:
- *         description: Usuário criado
+ *         description: Usuário criado, e-mail de primeiro acesso enviado
  *       403:
- *         description: Apenas MASTER
+ *         description: Apenas master
+ *       409:
+ *         description: E-mail já existe
+ *       500:
+ *         description: Usuário criado, mas falha ao enviar e-mail (verifique integração Gmail)
  */
 
 /**

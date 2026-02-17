@@ -11,6 +11,8 @@ import healthRoutes from "./routes/health.js";
 import empresasRoutes from "./routes/empresas.js";
 import orcamentosRoutes from "./routes/orcamentos.js";
 import relatoriosRoutes from "./routes/relatorios.js";
+import integrationsRoutes from "./routes/integrations.js";
+import emailTemplatesRoutes from "./routes/emailTemplates.js";
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use("/users", usersRoutes);
 app.use("/empresas", empresasRoutes);
 app.use("/orcamentos", orcamentosRoutes);
 app.use("/relatorios", relatoriosRoutes);
+app.use("/integrations", integrationsRoutes);
+app.use("/email-templates", emailTemplatesRoutes);
 app.use("/docs", swaggerUi.serve, (req, res, next) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const spec = {

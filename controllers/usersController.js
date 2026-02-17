@@ -1,5 +1,8 @@
 import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
+import { createPasswordToken } from "../src/services/passwordTokenService.js";
+import { sendEmail } from "../src/services/gmailService.js";
+import { getTemplate, renderWithData } from "../src/services/templateService.js";
 
 async function list(req, res) {
   const pool = getPool();
@@ -78,27 +81,29 @@ async function getById(req, res) {
 }
 
 async function createUser(req, res) {
-  const { name, email, password, role = 'USER', employee = {} } = req.body || {};
+  const { name, email, role = "USER", employee = {} } = req.body || {};
   const { full_name, phone } = employee;
 
-  if (!name || !email || !password || !full_name) {
-    return res.status(400).json({ message: 'Missing required fields' });
+  if (!name || !email || !full_name) {
+    return res.status(400).json({ message: "Missing required fields: name, email, employee.full_name" });
   }
 
   const pool = getPool();
   const connection = await pool.getConnection();
+  let userId;
+
   try {
     await connection.beginTransaction();
 
     const [userResult] = await connection.query(
       `
-        INSERT INTO users (name, email, password, role)
-        VALUES (?, ?, SHA2(?, 256), ?)
+        INSERT INTO users (name, email, password, role, must_set_password)
+        VALUES (?, ?, NULL, ?, 1)
       `,
-      [name, email, password, role]
+      [name, email, role]
     );
 
-    const userId = userResult.insertId;
+    userId = userResult.insertId;
 
     await connection.query(
       `
@@ -109,17 +114,46 @@ async function createUser(req, res) {
     );
 
     await connection.commit();
-
-    return res.status(201).json({ id: userId });
   } catch (err) {
     await connection.rollback();
-    if (err && err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ message: 'Email already exists' });
+    connection.release();
+    if (err && err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Email already exists" });
     }
     throw err;
   } finally {
     connection.release();
   }
+
+  try {
+    const token = await createPasswordToken(userId, "FIRST_ACCESS");
+    const link = `${process.env.FRONT_URL}/definir-senha?token=${token}`;
+    const companyName = process.env.COMPANY_NAME || "Campauto";
+
+    const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
+    const { subject, html } = renderWithData(template, {
+      user_name: name,
+      user_email: email,
+      action_url: link,
+      token_expires_in: "1 hora",
+      company_name: companyName,
+    });
+
+    const masterUserId = req.user?.userId;
+    const result = await sendEmail(masterUserId, email, subject, html);
+
+    if (!result.success) {
+      return res.status(500).json({
+        message: "Usuário criado, mas não foi possível enviar o e-mail. " + (result.error || "Verifique a integração Gmail."),
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({
+      message: "Usuário criado, mas falha ao enviar e-mail de boas-vindas. Verifique a integração Gmail.",
+    });
+  }
+
+  return res.status(201).json({ id: userId });
 }
 
 async function updateUser(req, res) {

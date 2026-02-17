@@ -24,7 +24,7 @@
  */
 
 /**
- * @swagger
+ * @openapi
  * /auth/forgot-password:
  *   post:
  *     summary: Envia email de recuperação
@@ -46,10 +46,10 @@
  */
 
 /**
- * @swagger
- * /auth/reset-password:
+ * @openapi
+ * /auth/set-password:
  *   post:
- *     summary: Redefine senha com token
+ *     summary: Define senha com token (primeiro acesso ou recuperação)
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -57,13 +57,17 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [token, password]
+ *             required: [token, newPassword]
  *             properties:
  *               token:
  *                 type: string
- *               password:
+ *               newPassword:
  *                 type: string
+ *                 minLength: 8
+ *                 description: Mínimo 8 caracteres, 1 letra e 1 número
  *     responses:
  *       200:
  *         description: Senha alterada com sucesso
+ *       400:
+ *         description: Token inválido ou senha fraca
  */

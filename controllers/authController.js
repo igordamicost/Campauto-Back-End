@@ -23,6 +23,7 @@ async function login(req, res) {
   const user = rows[0];
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
   if (user.blocked) return res.status(403).json({ message: 'Account is blocked' });
+  if (!user.password) return res.status(403).json({ message: 'Defina sua senha primeiro (verifique o e-mail)' });
 
   let ok = false;
   if (user.password && user.password.startsWith('$2')) {

@@ -3,6 +3,7 @@ import app from "./app.js";
 import { initDb } from "./db.js";
 import { importAllCsv } from "./importCsv.js";
 import { seedMasterUser } from "./src/seed/masterUser.js";
+import { seedEmailTemplates } from "./src/seed/emailTemplatesSeed.js";
 import { verifyDbConnection } from "./src/config/database.js";
 import { verifyEmailConnection } from "./src/config/email.js";
 
@@ -13,6 +14,7 @@ async function bootstrap() {
   await verifyDbConnection();
   await verifyEmailConnection();
   await seedMasterUser();
+  await seedEmailTemplates();
   await importAllCsv();
 
   app.listen(PORT, () => {

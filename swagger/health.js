@@ -1,10 +1,23 @@
 /**
- * @swagger
- * /health/email:
+ * @openapi
+ * /health:
  *   get:
- *     summary: Envia email de teste
+ *     summary: Health check da API
  *     tags: [Health]
  *     responses:
  *       200:
- *         description: Email enviado
+ *         description: API está funcionando
+ */
+
+/**
+ * @openapi
+ * /health/email:
+ *   get:
+ *     summary: Envia e-mail de teste (SMTP)
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: E-mail enviado
+ *       500:
+ *         description: Falha ao enviar
  */

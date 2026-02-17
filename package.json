@@ -17,12 +17,15 @@
     "csv-parser": "^3.0.0",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.2.1",
+    "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.16.3",
     "nodemailer": "^6.10.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
