@@ -14,6 +14,7 @@ import relatoriosRoutes from "./routes/relatorios.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
@@ -25,7 +26,14 @@ app.use("/users", usersRoutes);
 app.use("/empresas", empresasRoutes);
 app.use("/orcamentos", orcamentosRoutes);
 app.use("/relatorios", relatoriosRoutes);
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use("/docs", swaggerUi.serve, (req, res, next) => {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const spec = {
+    ...swaggerSpec,
+    servers: [{ url: baseUrl, description: "API atual" }]
+  };
+  swaggerUi.setup(spec)(req, res, next);
+});
 
 app.use((err, req, res, next) => {
   console.error(err);
