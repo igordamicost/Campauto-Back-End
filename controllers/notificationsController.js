@@ -13,8 +13,8 @@ async function listNotifications(req, res) {
 
     const filters = {
       isRead: isRead !== undefined ? isRead === "true" : undefined,
-      limit: Number(limit),
-      offset: Number(offset),
+      limit: Math.max(1, Math.min(1000, parseInt(limit) || 50)),
+      offset: Math.max(0, parseInt(offset) || 0),
     };
 
     const result = await NotificationRepository.getUserNotifications(userId, filters);

@@ -29,13 +29,16 @@ const asyncHandler = (fn) => (req, res, next) =>
  */
 async function listUsers(req, res) {
   try {
-    const { page = 1, limit = 20, q } = req.query;
+    // Converter query params para números inteiros
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit) || 20)); // Máximo 1000 por página
     const offset = (page - 1) * limit;
+    const q = req.query.q ? String(req.query.q).trim() : null;
 
     let whereSql = "";
     const params = [];
 
-    if (q) {
+    if (q && q.length > 0) {
       whereSql = "WHERE u.name LIKE ? OR u.email LIKE ?";
       params.push(`%${q}%`, `%${q}%`);
     }
@@ -56,7 +59,7 @@ async function listUsers(req, res) {
                        ORDER BY u.created_at DESC
                        LIMIT ? OFFSET ?`;
         
-        [rows] = await db.query(query, [...params, limit, offset]);
+        [rows] = await db.query(query, [...params, parseInt(limit), parseInt(offset)]);
       } else {
         // Se não existir, usar apenas a coluna role (sistema antigo)
         const query = `SELECT u.id, u.name, u.email, u.blocked, u.created_at,
@@ -68,7 +71,7 @@ async function listUsers(req, res) {
                        ORDER BY u.created_at DESC
                        LIMIT ? OFFSET ?`;
         
-        [rows] = await db.query(query, [...params, limit, offset]);
+        [rows] = await db.query(query, [...params, parseInt(limit), parseInt(offset)]);
       }
     } catch (queryError) {
       // Se der erro (ex: coluna role_id não existe), tentar query mais simples
@@ -83,7 +86,7 @@ async function listUsers(req, res) {
                        ORDER BY u.created_at DESC
                        LIMIT ? OFFSET ?`;
         
-        [rows] = await db.query(query, [...params, limit, offset]);
+        [rows] = await db.query(query, [...params, parseInt(limit), parseInt(offset)]);
       } else {
         throw queryError; // Re-throw se for outro erro
       }
@@ -96,9 +99,9 @@ async function listUsers(req, res) {
 
     return res.json({
       data: rows,
-      total: countRow.total,
-      page: Number(page),
-      limit: Number(limit),
+      total: parseInt(countRow.total) || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
     });
   } catch (error) {
     console.error("Error listing users:", error);
