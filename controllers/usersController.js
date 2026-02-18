@@ -89,8 +89,8 @@ async function createUser(req, res) {
     return res.status(400).json({ message: "Missing required fields: name, email" });
   }
 
-  // Definir role padrão se não fornecido
-  const roleString = role || "USER";
+    // Definir role padrão se não fornecido
+    const roleString = (role || "USER").toUpperCase();
 
   // Se password foi fornecido, validar e usar. Caso contrário, usuário definirá depois (must_set_password = 1)
   let hashedPassword = null;
@@ -125,27 +125,41 @@ async function createUser(req, res) {
       return res.status(409).json({ message: "Email already exists" });
     }
 
-    // Mapear role string para role_id (se usando sistema RBAC)
+    // Mapear role string para role_id (sistema RBAC)
     let roleId = null;
 
-    if (roleString) {
-      try {
-        const [roleRows] = await connection.query(
-          "SELECT id FROM roles WHERE name = ?",
-          [roleString.toUpperCase()]
-        );
-        if (roleRows.length > 0) {
-          roleId = roleRows[0].id;
+    try {
+      // Sempre tentar buscar role_id da tabela roles
+      const [roleRows] = await connection.query(
+        "SELECT id FROM roles WHERE name = ?",
+        [roleString]
+      );
+      
+      if (roleRows.length > 0) {
+        roleId = roleRows[0].id;
+      } else {
+        // Se role não encontrada, usar valores padrão baseados no nome
+        // MASTER -> role_id = 1, USER -> role_id = 3
+        if (roleString === "MASTER") {
+          roleId = 1;
+        } else {
+          roleId = 3; // USER é o padrão
         }
-      } catch (err) {
-        // Se tabela roles não existe, continua sem role_id (sistema antigo)
-        console.warn("Tabela roles não encontrada, usando sistema antigo:", err.message);
+        console.warn(`Role '${roleString}' não encontrada na tabela roles, usando role_id padrão: ${roleId}`);
+      }
+    } catch (err) {
+      // Se tabela roles não existe, usar valores padrão
+      console.warn("Tabela roles não encontrada, usando valores padrão:", err.message);
+      if (roleString === "MASTER") {
+        roleId = 1;
+      } else {
+        roleId = 3; // USER é o padrão
       }
     }
 
-    // Inserir usuário
-    if (roleId !== null) {
-      // Sistema RBAC: usar role_id
+    // Inserir usuário com role_id (sempre tentar inserir role_id)
+    try {
+      // Tentar inserir com role_id primeiro
       const [userResult] = await connection.query(
         `
           INSERT INTO users (name, email, password, role, role_id, must_set_password)
@@ -154,16 +168,33 @@ async function createUser(req, res) {
         [name, email, hashedPassword, roleString, roleId, mustSetPassword]
       );
       userId = userResult.insertId;
-    } else {
-      // Sistema antigo: usar role string
-      const [userResult] = await connection.query(
-        `
-          INSERT INTO users (name, email, password, role, must_set_password)
-          VALUES (?, ?, ?, ?, ?)
-        `,
-        [name, email, hashedPassword, roleString, mustSetPassword]
-      );
-      userId = userResult.insertId;
+    } catch (insertErr) {
+      // Se falhar (coluna role_id não existe), tentar sem role_id
+      if (insertErr.code === "ER_BAD_FIELD_ERROR" || insertErr.message.includes("role_id")) {
+        console.warn("Coluna role_id não existe, inserindo sem role_id:", insertErr.message);
+        const [userResult] = await connection.query(
+          `
+            INSERT INTO users (name, email, password, role, must_set_password)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+          [name, email, hashedPassword, roleString, mustSetPassword]
+        );
+        userId = userResult.insertId;
+        
+        // Tentar atualizar role_id depois (se a coluna existir)
+        if (roleId !== null) {
+          try {
+            await connection.query(
+              "UPDATE users SET role_id = ? WHERE id = ?",
+              [roleId, userId]
+            );
+          } catch (updateErr) {
+            console.warn("Não foi possível atualizar role_id:", updateErr.message);
+          }
+        }
+      } else {
+        throw insertErr; // Re-throw se for outro erro
+      }
     }
 
     // Criar employee se full_name foi fornecido

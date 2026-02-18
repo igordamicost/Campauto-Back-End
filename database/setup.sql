@@ -1,16 +1,38 @@
 CREATE DATABASE IF NOT EXISTS campauto;
 USE campauto;
 
+-- Criar tabela roles primeiro (necessária para foreign key em users)
+CREATE TABLE IF NOT EXISTS roles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE,
+  description TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Inserir roles padrão
+INSERT INTO roles (id, name, description) VALUES
+  (1, 'MASTER', 'Acesso total ao sistema'),
+  (2, 'ADMIN', 'Administrador com acesso amplo'),
+  (3, 'USER', 'Usuário padrão'),
+  (4, 'ALMOX', 'Almoxarifado/Estoque'),
+  (5, 'CONTAB', 'Contábil')
+ON DUPLICATE KEY UPDATE name=name;
+
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   cpf VARCHAR(20) NULL,
   telefone VARCHAR(30) NULL,
   email VARCHAR(190) NOT NULL UNIQUE,
-  password VARCHAR(64) NOT NULL,
+  password VARCHAR(255) NULL,
   role ENUM('MASTER','USER') NOT NULL DEFAULT 'USER',
+  role_id INT NULL,
   blocked TINYINT(1) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  must_set_password TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_users_role_id (role_id),
+  CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS employees (
@@ -244,6 +266,6 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   KEY idx_data (data)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO users (name, email, password, role)
-SELECT 'MASTER', 'master@campauto.com', SHA2('Master@123', 256), 'MASTER'
+INSERT INTO users (name, email, password, role, role_id)
+SELECT 'MASTER', 'master@campauto.com', SHA2('Master@123', 256), 'MASTER', 1
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'master@campauto.com');
