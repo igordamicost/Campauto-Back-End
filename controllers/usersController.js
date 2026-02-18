@@ -81,11 +81,26 @@ async function getById(req, res) {
 }
 
 async function createUser(req, res) {
-  const { name, email, role = "USER", employee = {} } = req.body || {};
+  const { name, email, password, role = "USER", employee = {} } = req.body || {};
   const { full_name, phone } = employee;
 
-  if (!name || !email || !full_name) {
-    return res.status(400).json({ message: "Missing required fields: name, email, employee.full_name" });
+  // Validações obrigatórias
+  if (!name || !email) {
+    return res.status(400).json({ message: "Missing required fields: name, email" });
+  }
+
+  // Se password foi fornecido, validar e usar. Caso contrário, usuário definirá depois (must_set_password = 1)
+  let hashedPassword = null;
+  let mustSetPassword = 1;
+
+  if (password && password.trim() !== "") {
+    // Validar senha (mínimo 6 caracteres)
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must have at least 6 characters" });
+    }
+    // Fazer hash da senha
+    hashedPassword = await bcrypt.hash(password, 12);
+    mustSetPassword = 0; // Senha já definida
   }
 
   const pool = getPool();
@@ -95,23 +110,65 @@ async function createUser(req, res) {
   try {
     await connection.beginTransaction();
 
-    const [userResult] = await connection.query(
-      `
-        INSERT INTO users (name, email, password, role, must_set_password)
-        VALUES (?, ?, NULL, ?, 1)
-      `,
-      [name, email, role]
+    // Verificar se email já existe
+    const [existing] = await connection.query(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
     );
 
-    userId = userResult.insertId;
+    if (existing.length > 0) {
+      await connection.rollback();
+      connection.release();
+      return res.status(409).json({ message: "Email already exists" });
+    }
 
-    await connection.query(
-      `
-        INSERT INTO employees (user_id, full_name, phone)
-        VALUES (?, ?, ?)
-      `,
-      [userId, full_name, phone || null]
-    );
+    // Mapear role string para role_id (se usando sistema RBAC)
+    let roleId = null;
+    let roleString = role;
+
+    if (role) {
+      const [roleRows] = await connection.query(
+        "SELECT id FROM roles WHERE name = ?",
+        [role.toUpperCase()]
+      );
+      if (roleRows.length > 0) {
+        roleId = roleRows[0].id;
+      }
+    }
+
+    // Inserir usuário
+    if (roleId !== null) {
+      // Sistema RBAC: usar role_id
+      const [userResult] = await connection.query(
+        `
+          INSERT INTO users (name, email, password, role, role_id, must_set_password)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [name, email, hashedPassword, roleString, roleId, mustSetPassword]
+      );
+      userId = userResult.insertId;
+    } else {
+      // Sistema antigo: usar role string
+      const [userResult] = await connection.query(
+        `
+          INSERT INTO users (name, email, password, role, must_set_password)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        [name, email, hashedPassword, roleString, mustSetPassword]
+      );
+      userId = userResult.insertId;
+    }
+
+    // Criar employee se full_name foi fornecido
+    if (full_name) {
+      await connection.query(
+        `
+          INSERT INTO employees (user_id, full_name, phone)
+          VALUES (?, ?, ?)
+        `,
+        [userId, full_name, phone || null]
+      );
+    }
 
     await connection.commit();
   } catch (err) {
@@ -120,40 +177,55 @@ async function createUser(req, res) {
     if (err && err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Email already exists" });
     }
-    throw err;
+    console.error("Erro ao criar usuário:", err);
+    return res.status(500).json({
+      message: "Erro interno do servidor ao criar usuário",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   } finally {
     connection.release();
   }
 
-  try {
-    const token = await createPasswordToken(userId, "FIRST_ACCESS");
-    const link = `${process.env.FRONT_URL}/definir-senha?token=${token}`;
-    const companyName = process.env.COMPANY_NAME || "Campauto";
+  // Se senha não foi fornecida, enviar email para definir senha
+  if (mustSetPassword === 1) {
+    try {
+      const token = await createPasswordToken(userId, "FIRST_ACCESS");
+      const link = `${process.env.FRONT_URL}/definir-senha?token=${token}`;
+      const companyName = process.env.COMPANY_NAME || "Campauto";
 
-    const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
-    const { subject, html } = renderWithData(template, {
-      user_name: name,
-      user_email: email,
-      action_url: link,
-      token_expires_in: "1 hora",
-      company_name: companyName,
-    });
+      const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
+      const { subject, html } = renderWithData(template, {
+        user_name: name,
+        user_email: email,
+        action_url: link,
+        token_expires_in: "1 hora",
+        company_name: companyName,
+      });
 
-    const masterUserId = req.user?.userId;
-    const result = await sendEmail(masterUserId, email, subject, html);
+      const masterUserId = req.user?.userId;
+      const result = await sendEmail(masterUserId, email, subject, html);
 
-    if (!result.success) {
-      return res.status(500).json({
-        message: "Usuário criado, mas não foi possível enviar o e-mail. " + (result.error || "Verifique a integração Gmail."),
+      if (!result.success) {
+        return res.status(201).json({
+          id: userId,
+          message: "Usuário criado, mas não foi possível enviar o e-mail. " + (result.error || "Verifique a integração Gmail."),
+        });
+      }
+    } catch (err) {
+      return res.status(201).json({
+        id: userId,
+        message: "Usuário criado, mas falha ao enviar e-mail de boas-vindas. Verifique a integração Gmail.",
       });
     }
-  } catch (err) {
-    return res.status(500).json({
-      message: "Usuário criado, mas falha ao enviar e-mail de boas-vindas. Verifique a integração Gmail.",
-    });
   }
 
-  return res.status(201).json({ id: userId });
+  return res.status(201).json({
+    id: userId,
+    name,
+    email,
+    role: roleString,
+    message: "Usuário criado com sucesso",
+  });
 }
 
 async function updateUser(req, res) {
@@ -172,6 +244,7 @@ async function updateUser(req, res) {
       [id]
     );
     if (!rows.length) {
+      connection.release();
       return res.status(404).json({ message: 'User not found' });
     }
 
@@ -185,14 +258,43 @@ async function updateUser(req, res) {
       userParams.push(name);
     }
     if (email !== undefined) {
+      // Verificar se email já existe em outro usuário
+      const [existing] = await connection.query(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [email, id]
+      );
+      if (existing.length > 0) {
+        await connection.rollback();
+        connection.release();
+        return res.status(409).json({ message: 'Email already exists' });
+      }
       userUpdates.push('email = ?');
       userParams.push(email);
     }
     if (password !== undefined && password !== '') {
-      userUpdates.push('password = SHA2(?, 256)');
-      userParams.push(password);
+      // Validar senha
+      if (password.length < 6) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ message: 'Password must have at least 6 characters' });
+      }
+      // Usar bcrypt ao invés de SHA2 para consistência
+      const hashedPassword = await bcrypt.hash(password, 12);
+      userUpdates.push('password = ?');
+      userParams.push(hashedPassword);
+      userUpdates.push('must_set_password = ?');
+      userParams.push(0); // Senha definida
     }
     if (role !== undefined) {
+      // Mapear role string para role_id (se usando sistema RBAC)
+      const [roleRows] = await connection.query(
+        'SELECT id FROM roles WHERE name = ?',
+        [role.toUpperCase()]
+      );
+      if (roleRows.length > 0) {
+        userUpdates.push('role_id = ?');
+        userParams.push(roleRows[0].id);
+      }
       userUpdates.push('role = ?');
       userParams.push(role);
     }
@@ -224,15 +326,19 @@ async function updateUser(req, res) {
     }
 
     await connection.commit();
+    connection.release();
     return res.json({ message: 'Updated' });
   } catch (err) {
     await connection.rollback();
+    connection.release();
     if (err?.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'Email already exists' });
     }
-    throw err;
-  } finally {
-    connection.release();
+    console.error('Erro ao atualizar usuário:', err);
+    return res.status(500).json({
+      message: 'Erro interno do servidor ao atualizar usuário',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
   }
 }
 
