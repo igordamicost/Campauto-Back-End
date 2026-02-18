@@ -4,13 +4,14 @@ import { getPool } from "../db.js";
 const columnsCache = new Map();
 
 async function getTableColumns(table) {
-  if (columnsCache.has(table)) return columnsCache.get(table);
+  // Não cachear 'produtos' para que novas colunas (ex.: preco_custo) sejam reconhecidas após migração sem restart
+  if (table !== 'produtos' && columnsCache.has(table)) return columnsCache.get(table);
   const pool = getPool();
   const [rows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
   const columns = rows
     .map((row) => row.Field)
     .filter((field) => !['id', 'row_hash'].includes(field));
-  columnsCache.set(table, columns);
+  if (table !== 'produtos') columnsCache.set(table, columns);
   return columns;
 }
 

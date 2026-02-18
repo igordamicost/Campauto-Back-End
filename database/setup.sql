@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS produtos (
   tipo_estoque VARCHAR(255) NULL,
   data_cadastro VARCHAR(255) NULL,
   observacao VARCHAR(255) NULL,
+  preco_custo DECIMAL(10,2) NULL COMMENT 'Custo do produto (uso interno no orçamento)',
   credita_icms VARCHAR(255) NULL,
   credita_ipi VARCHAR(255) NULL,
   sistema VARCHAR(255) NULL,
