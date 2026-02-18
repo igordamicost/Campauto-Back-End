@@ -81,13 +81,16 @@ async function getById(req, res) {
 }
 
 async function createUser(req, res) {
-  const { name, email, password, role = "USER", employee = {} } = req.body || {};
+  const { name, email, password, role, employee = {} } = req.body || {};
   const { full_name, phone } = employee;
 
   // Validações obrigatórias
   if (!name || !email) {
     return res.status(400).json({ message: "Missing required fields: name, email" });
   }
+
+  // Definir role padrão se não fornecido
+  const roleString = role || "USER";
 
   // Se password foi fornecido, validar e usar. Caso contrário, usuário definirá depois (must_set_password = 1)
   let hashedPassword = null;
@@ -124,15 +127,19 @@ async function createUser(req, res) {
 
     // Mapear role string para role_id (se usando sistema RBAC)
     let roleId = null;
-    let roleString = role;
 
-    if (role) {
-      const [roleRows] = await connection.query(
-        "SELECT id FROM roles WHERE name = ?",
-        [role.toUpperCase()]
-      );
-      if (roleRows.length > 0) {
-        roleId = roleRows[0].id;
+    if (roleString) {
+      try {
+        const [roleRows] = await connection.query(
+          "SELECT id FROM roles WHERE name = ?",
+          [roleString.toUpperCase()]
+        );
+        if (roleRows.length > 0) {
+          roleId = roleRows[0].id;
+        }
+      } catch (err) {
+        // Se tabela roles não existe, continua sem role_id (sistema antigo)
+        console.warn("Tabela roles não encontrada, usando sistema antigo:", err.message);
       }
     }
 
@@ -219,11 +226,14 @@ async function createUser(req, res) {
     }
   }
 
+  // Garantir que roleString está definido (fallback de segurança)
+  const finalRole = roleString || role || "USER";
+  
   return res.status(201).json({
     id: userId,
     name,
     email,
-    role: roleString,
+    role: finalRole,
     message: "Usuário criado com sucesso",
   });
 }
