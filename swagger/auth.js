@@ -71,3 +71,59 @@
  *       400:
  *         description: Token inválido ou senha fraca
  */
+
+/**
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     summary: Obter dados do usuário logado com permissões
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dados do usuário com role e permissões
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 name:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 role:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                       enum: [MASTER, ADMIN, USER, ALMOX, CONTAB]
+ *                     description:
+ *                       type: string
+ *                 permissions:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["sales.read", "stock.read", "stock.reserve.create"]
+ *                 permissionsDetail:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       key:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       module:
+ *                         type: string
+ *       401:
+ *         description: Token inválido ou expirado
+ *       404:
+ *         description: Usuário não encontrado
+ */

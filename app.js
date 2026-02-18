@@ -13,6 +13,12 @@ import orcamentosRoutes from "./routes/orcamentos.js";
 import relatoriosRoutes from "./routes/relatorios.js";
 import integrationsRoutes from "./routes/integrations.js";
 import emailTemplatesRoutes from "./routes/emailTemplates.js";
+import adminRoutes from "./routes/admin.js";
+import reservationsRoutes from "./routes/reservations.js";
+import stockRoutes from "./routes/stock.js";
+import reportsRoutes from "./routes/reports.js";
+import commissionsRoutes from "./routes/commissions.js";
+import notificationsRoutes from "./routes/notifications.js";
 
 const app = express();
 
@@ -30,6 +36,12 @@ app.use("/orcamentos", orcamentosRoutes);
 app.use("/relatorios", relatoriosRoutes);
 app.use("/integrations", integrationsRoutes);
 app.use("/email-templates", emailTemplatesRoutes);
+app.use("/admin", adminRoutes);
+app.use("/reservations", reservationsRoutes);
+app.use("/stock", stockRoutes);
+app.use("/reports", reportsRoutes);
+app.use("/commissions", commissionsRoutes);
+app.use("/notifications", notificationsRoutes);
 app.use("/docs", swaggerUi.serve, (req, res, next) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const spec = {

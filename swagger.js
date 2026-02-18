@@ -5,7 +5,7 @@ const swaggerDefinition = {
   info: {
     title: "Campauto API",
     version: "1.0.0",
-    description: "API REST - Auth, Usuários, Clientes, Produtos, Empresas, Orçamentos, Relatórios, Integrações Gmail e Templates de E-mail"
+    description: "API REST - Sistema completo de Mecânica + Distribuidora de Autopeças com RBAC, Reservas, Estoque, Notificações, Relatórios e Comissões"
   },
   servers: [
     {

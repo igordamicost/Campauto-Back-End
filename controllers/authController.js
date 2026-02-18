@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { getPool } from "../db.js";
+import { RBACRepository } from "../src/repositories/rbac.repository.js";
 
 async function login(req, res) {
   const { email, password } = req.body || {};
@@ -12,7 +13,7 @@ async function login(req, res) {
   const pool = getPool();
   const [rows] = await pool.query(
     `
-      SELECT id, name, email, role, password, blocked
+      SELECT id, name, email, role_id, password, blocked
       FROM users
       WHERE email = ?
       LIMIT 1
@@ -36,10 +37,40 @@ async function login(req, res) {
   if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
 
   const token = jwt.sign(
-    { userId: user.id, role: user.role },
+    { userId: user.id, roleId: user.role_id },
     process.env.JWT_SECRET
   );
   return res.json({ token });
 }
 
-export { login };
+async function getMe(req, res) {
+  try {
+    const userId = req.user.userId;
+    const userWithPermissions = await RBACRepository.getUserWithPermissions(userId);
+
+    if (!userWithPermissions) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    // Formatar resposta
+    const response = {
+      id: userWithPermissions.id,
+      name: userWithPermissions.name,
+      email: userWithPermissions.email,
+      role: {
+        id: userWithPermissions.role_id,
+        name: userWithPermissions.role_name,
+        description: userWithPermissions.role_description,
+      },
+      permissions: userWithPermissions.permissions,
+      permissionsDetail: userWithPermissions.permissionsDetail,
+    };
+
+    return res.json(response);
+  } catch (error) {
+    console.error('Error in getMe:', error);
+    return res.status(500).json({ message: 'Erro ao buscar dados do usuário' });
+  }
+}
+
+export { login, getMe };
