@@ -2,6 +2,25 @@ import { db } from "../src/config/database.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
 import bcrypt from "bcryptjs";
 
+/**
+ * Verifica se a tabela roles existe no banco
+ */
+async function rolesTableExists() {
+  try {
+    // Tentar fazer uma query simples na tabela roles
+    await db.query("SELECT 1 FROM roles LIMIT 1");
+    return true;
+  } catch (error) {
+    // Se der erro (tabela não existe), retornar false
+    if (error.code === "ER_NO_SUCH_TABLE" || error.code === "42S02") {
+      return false;
+    }
+    // Se for outro erro, também retornar false para segurança
+    console.warn("Erro ao verificar tabela roles:", error.message);
+    return false;
+  }
+}
+
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -21,17 +40,55 @@ async function listUsers(req, res) {
       params.push(`%${q}%`, `%${q}%`);
     }
 
-    const [rows] = await db.query(
-      `SELECT u.id, u.name, u.email, u.role_id, u.blocked, u.created_at,
-              r.name AS role_name, r.description AS role_description
-       FROM users u
-       LEFT JOIN roles r ON u.role_id = r.id
-       ${whereSql}
-       ORDER BY u.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
-
+    // Verificar se a tabela roles existe antes de fazer JOIN
+    const hasRolesTable = await rolesTableExists();
+    
+    let rows = [];
+    
+    try {
+      if (hasRolesTable) {
+        // Fazer JOIN com roles se a tabela existir
+        const query = `SELECT u.id, u.name, u.email, u.role_id, u.blocked, u.created_at,
+                              r.name AS role_name, r.description AS role_description
+                       FROM users u
+                       LEFT JOIN roles r ON u.role_id = r.id
+                       ${whereSql}
+                       ORDER BY u.created_at DESC
+                       LIMIT ? OFFSET ?`;
+        
+        [rows] = await db.query(query, [...params, limit, offset]);
+      } else {
+        // Se não existir, usar apenas a coluna role (sistema antigo)
+        const query = `SELECT u.id, u.name, u.email, u.blocked, u.created_at,
+                              u.role AS role_name,
+                              NULL AS role_description,
+                              NULL AS role_id
+                       FROM users u
+                       ${whereSql}
+                       ORDER BY u.created_at DESC
+                       LIMIT ? OFFSET ?`;
+        
+        [rows] = await db.query(query, [...params, limit, offset]);
+      }
+    } catch (queryError) {
+      // Se der erro (ex: coluna role_id não existe), tentar query mais simples
+      if (queryError.code === "ER_BAD_FIELD_ERROR" || queryError.message.includes("role_id")) {
+        console.warn("Coluna role_id não encontrada, usando query simplificada:", queryError.message);
+        const query = `SELECT u.id, u.name, u.email, u.blocked, u.created_at,
+                              u.role AS role_name,
+                              NULL AS role_description,
+                              NULL AS role_id
+                       FROM users u
+                       ${whereSql}
+                       ORDER BY u.created_at DESC
+                       LIMIT ? OFFSET ?`;
+        
+        [rows] = await db.query(query, [...params, limit, offset]);
+      } else {
+        throw queryError; // Re-throw se for outro erro
+      }
+    }
+    
     const [[countRow]] = await db.query(
       `SELECT COUNT(*) AS total FROM users u ${whereSql}`,
       params
@@ -45,7 +102,16 @@ async function listUsers(req, res) {
     });
   } catch (error) {
     console.error("Error listing users:", error);
-    return res.status(500).json({ message: "Erro ao listar usuários" });
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      sqlState: error.sqlState,
+      sqlMessage: error.sqlMessage
+    });
+    return res.status(500).json({ 
+      message: "Erro ao listar usuários",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 }
 
