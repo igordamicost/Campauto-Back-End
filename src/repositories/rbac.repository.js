@@ -30,11 +30,11 @@ export class RBACRepository {
    */
   static async getRolePermissions(roleId) {
     const [rows] = await db.query(
-      `SELECT p.id, p.key, p.description, p.module
+      `SELECT p.id, p.\`key\`, p.description, p.module
        FROM permissions p
        INNER JOIN role_permissions rp ON p.id = rp.permission_id
        WHERE rp.role_id = ?
-       ORDER BY p.module, p.key`,
+       ORDER BY p.module, p.\`key\``,
       [roleId]
     );
     return rows;
@@ -45,12 +45,12 @@ export class RBACRepository {
    */
   static async getUserPermissions(userId) {
     const [rows] = await db.query(
-      `SELECT DISTINCT p.id, p.key, p.description, p.module
+      `SELECT DISTINCT p.id, p.\`key\`, p.description, p.module
        FROM permissions p
        INNER JOIN role_permissions rp ON p.id = rp.permission_id
        INNER JOIN users u ON rp.role_id = u.role_id
        WHERE u.id = ?
-       ORDER BY p.module, p.key`,
+       ORDER BY p.module, p.\`key\``,
       [userId]
     );
     return rows;
@@ -79,7 +79,7 @@ export class RBACRepository {
        FROM role_permissions rp
        INNER JOIN users u ON rp.role_id = u.role_id
        INNER JOIN permissions p ON rp.permission_id = p.id
-       WHERE u.id = ? AND p.key = ?`,
+       WHERE u.id = ? AND p.\`key\` = ?`,
       [userId, permissionKey]
     );
     return rows[0].count > 0;
@@ -88,10 +88,18 @@ export class RBACRepository {
   /**
    * Lista todas as permissões
    */
-  static async getAllPermissions() {
-    const [rows] = await db.query(
-      "SELECT id, key, description, module FROM permissions ORDER BY module, key"
-    );
+  static async getAllPermissions(module = null) {
+    let query = "SELECT id, `key`, description, module, created_at FROM permissions";
+    const params = [];
+    
+    if (module) {
+      query += " WHERE module = ?";
+      params.push(module);
+    }
+    
+    query += " ORDER BY module, `key`";
+    
+    const [rows] = await db.query(query, params);
     return rows;
   }
 
@@ -150,5 +158,173 @@ export class RBACRepository {
       permissions: permissions.map((p) => p.key),
       permissionsDetail: permissions,
     };
+  }
+
+  /**
+   * Cria uma nova role
+   */
+  static async createRole(name, description = null) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        "INSERT INTO roles (name, description) VALUES (?, ?)",
+        [name.trim().toUpperCase(), description?.trim() || null]
+      );
+
+      await connection.commit();
+
+      return await this.getRoleById(result.insertId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Atualiza uma role
+   */
+  static async updateRole(roleId, updates) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const updateFields = [];
+      const params = [];
+
+      if (updates.name !== undefined) {
+        updateFields.push("name = ?");
+        params.push(updates.name.trim().toUpperCase());
+      }
+
+      if (updates.description !== undefined) {
+        updateFields.push("description = ?");
+        params.push(updates.description?.trim() || null);
+      }
+
+      if (updateFields.length === 0) {
+        await connection.rollback();
+        throw new Error("Nenhum campo para atualizar");
+      }
+
+      params.push(roleId);
+
+      await connection.query(
+        `UPDATE roles SET ${updateFields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        params
+      );
+
+      await connection.commit();
+
+      return await this.getRoleById(roleId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Cria uma nova permissão
+   */
+  static async createPermission(key, description, module) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        "INSERT INTO permissions (`key`, description, module) VALUES (?, ?, ?)",
+        [key.trim(), description?.trim() || null, module?.trim() || null]
+      );
+
+      await connection.commit();
+
+      const [rows] = await db.query(
+        "SELECT id, `key`, description, module, created_at FROM permissions WHERE id = ?",
+        [result.insertId]
+      );
+
+      return rows[0];
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Verifica se uma role existe
+   */
+  static async roleExists(roleId) {
+    const [rows] = await db.query("SELECT id FROM roles WHERE id = ?", [roleId]);
+    return rows.length > 0;
+  }
+
+  /**
+   * Verifica se uma role com nome existe
+   */
+  static async roleNameExists(name, excludeId = null) {
+    let query = "SELECT id FROM roles WHERE name = ?";
+    const params = [name.trim().toUpperCase()];
+    
+    if (excludeId) {
+      query += " AND id != ?";
+      params.push(excludeId);
+    }
+    
+    const [rows] = await db.query(query, params);
+    return rows.length > 0;
+  }
+
+  /**
+   * Verifica se uma permissão com key existe
+   */
+  static async permissionKeyExists(key, excludeId = null) {
+    let query = "SELECT id FROM permissions WHERE `key` = ?";
+    const params = [key.trim()];
+    
+    if (excludeId) {
+      query += " AND id != ?";
+      params.push(excludeId);
+    }
+    
+    const [rows] = await db.query(query, params);
+    return rows.length > 0;
+  }
+
+  /**
+   * Verifica se todas as permissões existem
+   */
+  static async validatePermissionIds(permissionIds) {
+    if (!permissionIds || permissionIds.length === 0) {
+      return { valid: true, invalidIds: [] };
+    }
+
+    const placeholders = permissionIds.map(() => "?").join(",");
+    const [rows] = await db.query(
+      `SELECT id FROM permissions WHERE id IN (${placeholders})`,
+      permissionIds
+    );
+
+    const validIds = rows.map((r) => r.id);
+    const invalidIds = permissionIds.filter((id) => !validIds.includes(id));
+
+    return {
+      valid: invalidIds.length === 0,
+      invalidIds,
+    };
+  }
+
+  /**
+   * Verifica se uma role é MASTER
+   */
+  static async isMasterRole(roleId) {
+    const role = await this.getRoleById(roleId);
+    return role && role.name === "MASTER";
   }
 }

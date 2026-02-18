@@ -18,7 +18,11 @@ router.delete("/users/:id", adminController.deleteUser);
 
 // Roles e Permissões (requer permissão específica)
 router.get("/roles", requirePermission("admin.roles.manage"), adminController.listRoles);
+router.get("/roles/:id", requirePermission("admin.roles.manage"), adminController.getRoleById);
+router.post("/roles", requirePermission("admin.roles.manage"), adminController.createRole);
+router.put("/roles/:id", requirePermission("admin.roles.manage"), adminController.updateRole);
 router.get("/permissions", requirePermission("admin.roles.manage"), adminController.listPermissions);
+router.post("/permissions", requirePermission("admin.roles.manage"), adminController.createPermission);
 router.get("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.getRolePermissions);
 router.put("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.updateRolePermissions);
 

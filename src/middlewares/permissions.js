@@ -15,6 +15,11 @@ export function requirePermission(permissionKeys) {
 
       const userId = req.user.userId;
 
+      // Usuários MASTER têm acesso total (bypass de verificação de permissões)
+      if (req.user.roleId === 1 || req.user.role === "MASTER") {
+        return next();
+      }
+
       // Verificar cada permissão
       for (const permissionKey of permissions) {
         const hasPermission = await RBACRepository.userHasPermission(

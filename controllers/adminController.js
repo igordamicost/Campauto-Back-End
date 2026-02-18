@@ -271,11 +271,115 @@ async function listRoles(req, res) {
 }
 
 /**
- * Lista permissões
+ * Busca role por ID
+ */
+async function getRoleById(req, res) {
+  try {
+    const { id } = req.params;
+    const role = await RBACRepository.getRoleById(id);
+
+    if (!role) {
+      return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    return res.json(role);
+  } catch (error) {
+    console.error("Error getting role:", error);
+    return res.status(500).json({ message: "Erro ao buscar role" });
+  }
+}
+
+/**
+ * Cria nova role
+ */
+async function createRole(req, res) {
+  try {
+    const { name, description } = req.body;
+
+    // Validações
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ message: "Nome da role é obrigatório" });
+    }
+
+    // Verificar se já existe
+    const exists = await RBACRepository.roleNameExists(name);
+    if (exists) {
+      return res.status(409).json({ message: "Role com este nome já existe" });
+    }
+
+    const role = await RBACRepository.createRole(name, description);
+
+    return res.status(201).json(role);
+  } catch (error) {
+    console.error("Error creating role:", error);
+    
+    // Erro de duplicação
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Role com este nome já existe" });
+    }
+
+    return res.status(500).json({ message: "Erro ao criar role" });
+  }
+}
+
+/**
+ * Atualiza role
+ */
+async function updateRole(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+
+    // Verificar se role existe
+    const role = await RBACRepository.getRoleById(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    // Proteção: MASTER não pode ter nome alterado
+    if (role.name === "MASTER" && name && name !== "MASTER") {
+      return res.status(400).json({
+        message: "Não é permitido alterar o nome da role MASTER",
+      });
+    }
+
+    // Verificar unicidade se nome mudou
+    if (name && name !== role.name) {
+      const exists = await RBACRepository.roleNameExists(name, id);
+      if (exists) {
+        return res.status(409).json({ message: "Role com este nome já existe" });
+      }
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Nenhum campo para atualizar" });
+    }
+
+    const updatedRole = await RBACRepository.updateRole(id, updates);
+
+    return res.json(updatedRole);
+  } catch (error) {
+    console.error("Error updating role:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Role com este nome já existe" });
+    }
+
+    return res.status(500).json({ message: "Erro ao atualizar role" });
+  }
+}
+
+/**
+ * Lista permissões (com filtro opcional por módulo)
  */
 async function listPermissions(req, res) {
   try {
-    const permissions = await RBACRepository.getAllPermissions();
+    const { module } = req.query;
+    const permissions = await RBACRepository.getAllPermissions(module || null);
     return res.json({ data: permissions });
   } catch (error) {
     console.error("Error listing permissions:", error);
@@ -289,8 +393,24 @@ async function listPermissions(req, res) {
 async function getRolePermissions(req, res) {
   try {
     const { id } = req.params;
+
+    // Buscar role
+    const role = await RBACRepository.getRoleById(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    // Buscar permissões
     const permissions = await RBACRepository.getRolePermissions(id);
-    return res.json({ data: permissions });
+
+    return res.json({
+      role: {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+      },
+      permissions: permissions,
+    });
   } catch (error) {
     console.error("Error getting role permissions:", error);
     return res.status(500).json({ message: "Erro ao buscar permissões da role" });
@@ -305,12 +425,39 @@ async function updateRolePermissions(req, res) {
     const { id } = req.params;
     const { permission_ids } = req.body;
 
+    // Validações
     if (!Array.isArray(permission_ids)) {
       return res.status(400).json({ message: "permission_ids deve ser um array" });
     }
 
+    // Verificar se role existe
+    const role = await RBACRepository.getRoleById(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    // Proteção: MASTER deve ter pelo menos uma permissão
+    if (role.name === "MASTER" && permission_ids.length === 0) {
+      return res.status(400).json({
+        message: "Role MASTER deve ter pelo menos uma permissão",
+      });
+    }
+
+    // Validar que todas as permissões existem
+    if (permission_ids.length > 0) {
+      const validation = await RBACRepository.validatePermissionIds(permission_ids);
+      if (!validation.valid) {
+        return res.status(400).json({
+          message: "Uma ou mais permissões não existem",
+          invalid_ids: validation.invalidIds,
+        });
+      }
+    }
+
+    // Atualizar permissões
     await RBACRepository.updateRolePermissions(id, permission_ids);
 
+    // Buscar permissões atualizadas
     const permissions = await RBACRepository.getRolePermissions(id);
 
     return res.json({
@@ -324,6 +471,54 @@ async function updateRolePermissions(req, res) {
   }
 }
 
+/**
+ * Cria nova permissão
+ */
+async function createPermission(req, res) {
+  try {
+    const { key, description, module } = req.body;
+
+    // Validações
+    if (!key || key.trim() === "") {
+      return res.status(400).json({ message: "Key da permissão é obrigatória" });
+    }
+
+    if (!description || description.trim() === "") {
+      return res.status(400).json({ message: "Descrição da permissão é obrigatória" });
+    }
+
+    if (!module || module.trim() === "") {
+      return res.status(400).json({ message: "Módulo da permissão é obrigatório" });
+    }
+
+    // Validar formato da key (module.action)
+    const keyPattern = /^[a-z0-9_]+\.[a-z0-9_.]+$/i;
+    if (!keyPattern.test(key.trim())) {
+      return res.status(400).json({
+        message: "Formato de key inválido. Use o formato: module.action (ex: sales.read)",
+      });
+    }
+
+    // Verificar se já existe
+    const exists = await RBACRepository.permissionKeyExists(key);
+    if (exists) {
+      return res.status(409).json({ message: "Permissão com esta key já existe" });
+    }
+
+    const permission = await RBACRepository.createPermission(key, description, module);
+
+    return res.status(201).json(permission);
+  } catch (error) {
+    console.error("Error creating permission:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Permissão com esta key já existe" });
+    }
+
+    return res.status(500).json({ message: "Erro ao criar permissão" });
+  }
+}
+
 export default {
   listUsers: asyncHandler(listUsers),
   getUserById: asyncHandler(getUserById),
@@ -331,7 +526,11 @@ export default {
   updateUser: asyncHandler(updateUser),
   deleteUser: asyncHandler(deleteUser),
   listRoles: asyncHandler(listRoles),
+  getRoleById: asyncHandler(getRoleById),
+  createRole: asyncHandler(createRole),
+  updateRole: asyncHandler(updateRole),
   listPermissions: asyncHandler(listPermissions),
+  createPermission: asyncHandler(createPermission),
   getRolePermissions: asyncHandler(getRolePermissions),
   updateRolePermissions: asyncHandler(updateRolePermissions),
 };
