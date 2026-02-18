@@ -88,9 +88,10 @@ async function clienteExists(clienteId) {
 
 async function list(req, res) {
   const role = String(req.user?.role || "").toUpperCase();
-  const isAdmin = role === "MASTER" || role === "ADMIN";
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
   const query = { ...req.query };
-  if (!isAdmin && req.user?.userId) {
+  if (!isMaster && req.user?.userId) {
     query.usuario_id__eq = req.user.userId;
   }
 
@@ -99,10 +100,11 @@ async function list(req, res) {
 
   const { data, total } = await baseService.listWithFilters(TABLE, query);
 
-  const include = query.include ? String(query.include).split(",") : [];
+  const include = query.include ? String(query.include).split(",").map((s) => s.trim()) : [];
   const includeClientes = include.includes("clientes");
   const includeEmpresas = include.includes("empresas");
   const includeVeiculos = include.includes("veiculos");
+  const includeUsuario = include.includes("usuario") || include.includes("usuarios");
 
   const pool = getPool();
 
@@ -116,9 +118,29 @@ async function list(req, res) {
         .join(",")})`,
       responsavelIds
     );
-    const map = new Map(rows.map((row) => [row.id, row]));
+    const map = new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          id: row.id,
+          name: row.name,
+          nome: row.name,
+          email: row.email,
+          role: row.role
+        }
+      ])
+    );
     data.forEach((row) => {
-      row.responsavel = map.get(row.usuario_id) || null;
+      const user = map.get(row.usuario_id) || null;
+      row.responsavel = user;
+      if (includeUsuario) {
+        row.usuario = user;
+      }
+    });
+  } else {
+    data.forEach((row) => {
+      row.responsavel = null;
+      if (includeUsuario) row.usuario = null;
     });
   }
 
@@ -198,8 +220,9 @@ async function getById(req, res) {
   if (!item) return res.status(404).json({ message: "Not found" });
 
   const role = String(req.user?.role || "").toUpperCase();
-  const isAdmin = role === "MASTER" || role === "ADMIN";
-  if (!isAdmin && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
+  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(403).json({ message: "Acesso negado" });
   }
 
@@ -282,11 +305,18 @@ async function create(req, res) {
     req.body.desconto || 0
   );
 
+  const userId = req.user?.userId || null;
+  if (req.body.usuario_id != null && Number(req.body.usuario_id) !== Number(userId)) {
+    return res.status(400).json({
+      message: "Não é permitido associar o orçamento a outro usuário. Use o usuário autenticado.",
+    });
+  }
+
   const dados = {
     ...req.body,
     json_itens: jsonItensParsed ? JSON.stringify(jsonItensParsed) : null,
     numero_sequencial: numeroSequencial,
-    usuario_id: req.user?.userId || null,
+    usuario_id: userId,
     subtotal,
     desconto,
     total
@@ -300,6 +330,13 @@ async function create(req, res) {
 
 async function update(req, res) {
   const dados = { ...req.body };
+
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
+  if (!isMaster) {
+    delete dados.usuario_id;
+  }
 
   const { parsed: jsonItensParsed, error: jsonItensError } = normalizeJsonItens(
     dados.json_itens

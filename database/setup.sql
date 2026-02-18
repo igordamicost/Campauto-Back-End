@@ -264,7 +264,8 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   KEY idx_cliente (cliente_id),
   KEY idx_empresa (empresa_id),
   KEY idx_status (status),
-  KEY idx_data (data)
+  KEY idx_data (data),
+  KEY idx_usuario_id (usuario_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO users (name, email, password, role, role_id)
