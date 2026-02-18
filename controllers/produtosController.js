@@ -10,18 +10,25 @@ async function list(req, res) {
   const limit = Math.max(1, Math.min(1000, Number(req.query.limit || req.query.perPage) || 20));
   const page = Math.max(1, Number(req.query.page || 1));
   const q = req.query.q ? String(req.query.q).trim() : "";
-  const observacao = req.query.observacao !== undefined && req.query.observacao !== null
-    ? String(req.query.observacao).trim()
-    : undefined;
+  const observacao =
+    req.query.observacao !== undefined && req.query.observacao !== null
+      ? String(req.query.observacao).trim()
+      : undefined;
+  const observacaoId =
+    req.query.observacao_id !== undefined && req.query.observacao_id !== null && req.query.observacao_id !== ""
+      ? Number(req.query.observacao_id)
+      : undefined;
 
   const useSearch =
     q.length > 0 ||
-    (observacao !== undefined && observacao !== "");
+    (observacao !== undefined && observacao !== "") ||
+    observacaoId !== undefined;
 
   if (useSearch) {
     const { data, total } = await listProdutosWithSearch({
       q: q || undefined,
       observacao,
+      observacao_id: observacaoId,
       limit,
       page,
       sortBy: req.query.sortBy,
