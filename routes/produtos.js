@@ -8,9 +8,11 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 router.use(authMiddleware);
 
-router.get('/', asyncHandler(controller.list));
+router.get("/", asyncHandler(controller.list));
 
-router.get('/:id', asyncHandler(controller.getById));
+router.get("/correlatos/:id", asyncHandler(controller.correlatos));
+
+router.get("/:id", asyncHandler(controller.getById));
 
 router.post('/', asyncHandler(controller.create));
 

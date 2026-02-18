@@ -1,11 +1,42 @@
 import * as baseService from "../services/baseService.js";
+import {
+  listProdutosWithSearch,
+  listCorrelatos,
+} from "../services/produtosSearchService.js";
 
-const TABLE = 'produtos';
+const TABLE = "produtos";
 
 async function list(req, res) {
-  const limit = Number(req.query.limit || req.query.perPage || 10);
+  const limit = Math.max(1, Math.min(1000, Number(req.query.limit || req.query.perPage) || 20));
   const page = Math.max(1, Number(req.query.page || 1));
-  const offset = (page - 1) * limit;
+  const q = req.query.q ? String(req.query.q).trim() : "";
+  const observacao = req.query.observacao !== undefined && req.query.observacao !== null
+    ? String(req.query.observacao).trim()
+    : undefined;
+
+  const useSearch =
+    q.length > 0 ||
+    (observacao !== undefined && observacao !== "");
+
+  if (useSearch) {
+    const { data, total } = await listProdutosWithSearch({
+      q: q || undefined,
+      observacao,
+      limit,
+      page,
+      sortBy: req.query.sortBy,
+      sortDir: req.query.sortDir,
+    });
+    const totalPages = Math.ceil(total / limit) || 1;
+    return res.json({
+      data,
+      page,
+      perPage: limit,
+      total,
+      totalPages,
+    });
+  }
+
   const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
   res.json({ data, page, perPage: limit, total, totalPages });
@@ -35,4 +66,32 @@ async function remove(req, res) {
   res.json({ message: 'Deleted' });
 }
 
-export { list, getById, create, update, remove };
+async function correlatos(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Invalid product id' });
+
+  const result = await listCorrelatos(id, {
+    limit: req.query.limit || req.query.perPage,
+    page: req.query.page,
+    sortBy: req.query.sortBy,
+    sortDir: req.query.sortDir,
+  });
+
+  if (result === null) {
+    return res.status(404).json({ message: 'Product not found' });
+  }
+
+  const limit = Math.max(1, Math.min(1000, Number(req.query.limit || req.query.perPage) || 50));
+  const page = Math.max(1, Number(req.query.page || 1));
+  const totalPages = Math.ceil(result.total / limit) || 1;
+
+  return res.json({
+    data: result.data,
+    total: result.total,
+    page,
+    perPage: limit,
+    totalPages,
+  });
+}
+
+export { list, getById, create, update, remove, correlatos };
