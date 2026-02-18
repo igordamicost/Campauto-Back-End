@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import { db } from "../config/database.js";
 
-export function authMiddleware(req, res, next) {
+export async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization || "";
   const [scheme, token] = authHeader.split(" ");
 
@@ -10,6 +11,23 @@ export function authMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Enriquecer req.user com informações da role (para compatibilidade com middlewares antigos)
+    if (payload.roleId) {
+      try {
+        const [roleRows] = await db.query(
+          "SELECT name FROM roles WHERE id = ?",
+          [payload.roleId]
+        );
+        if (roleRows.length > 0) {
+          payload.role = roleRows[0].name; // Adicionar role como string para compatibilidade
+        }
+      } catch (error) {
+        // Se não conseguir buscar role, continua sem ela (fallback)
+        console.warn("Erro ao buscar role do usuário:", error.message);
+      }
+    }
+    
     req.user = payload;
     return next();
   } catch (error) {
