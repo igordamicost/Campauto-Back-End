@@ -79,7 +79,7 @@
  *         name: refType
  *         schema:
  *           type: string
- *         description: Tipo de referência (ex: PURCHASE, SALE)
+ *         description: Tipo de referência exemplo PURCHASE ou SALE
  *       - in: query
  *         name: refId
  *         schema:
@@ -143,7 +143,7 @@
  *                 minimum: 0.001
  *               ref_type:
  *                 type: string
- *                 description: Tipo de referência (ex: PURCHASE, SALE)
+ *                 description: Tipo de referência exemplo PURCHASE ou SALE
  *               ref_id:
  *                 type: integer
  *                 description: ID da referência

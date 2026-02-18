@@ -52,7 +52,7 @@
  *                         nullable: true
  *                       metadata:
  *                         type: object
- *                         description: Dados adicionais (ex: reservation_id, product_id)
+ *                         description: Dados adicionais exemplo reservation_id product_id
  *                       created_at:
  *                         type: string
  *                         format: date-time

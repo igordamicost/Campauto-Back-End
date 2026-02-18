@@ -169,7 +169,7 @@
  *       200:
  *         description: Usuário removido
  *       400:
- *         description: Não é possível remover (ex: último admin)
+ *         description: Não é possível remover - exemplo último admin
  *       404:
  *         description: Usuário não encontrado
  *       403:

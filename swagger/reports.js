@@ -13,7 +13,7 @@
  *         schema:
  *           type: string
  *           pattern: '^\d{4}-\d{2}$'
- *         description: Mês no formato YYYY-MM (ex: 2026-02)
+ *         description: Mês no formato YYYY-MM exemplo 2026-02
  *     responses:
  *       200:
  *         description: Relatório de vendas
