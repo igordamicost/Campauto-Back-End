@@ -143,9 +143,10 @@ function isEmailTerm(term) {
 
 /**
  * Lista clientes com busca inteligente normalizada (q).
- * Busca em: Nome/Fantasia (cliente, fantasia), Razão Social (razao_social), CPF/CNPJ (cpf_cnpj), Contato (telefone, celular, email).
- * NÃO busca em endereço/município conforme solicitado.
+ * Busca em: Nome/Fantasia (cliente, fantasia), Razão Social (razao_social), CPF/CNPJ (cpf_cnpj), Contato (telefone, celular, email), Município.
+ * Inclui município para encontrar pessoas que são do município mesmo sem o termo no nome.
  * Busca é case-insensitive (não diferencia maiúsculas/minúsculas).
+ * Ordenação: primeiro pessoas jurídicas (tipo_pessoa = 'J'), depois pessoas físicas (tipo_pessoa = 'F'), ordenadas por fantasia/razao_social.
  * @param {Object} options
  * @param {string} [options.q] - Texto de busca (vários termos); aplica normalização.
  * @param {number} [options.limit=20]
@@ -191,8 +192,8 @@ export async function listClientesWithSearch(options = {}) {
       searchTerm = q.toLowerCase().trim();
     }
     
-    // Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato
-    // NÃO inclui endereço/município conforme solicitado
+    // Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato, Município
+    // Inclui município para encontrar pessoas que são do município mesmo sem "bonito" no nome
     // Busca case-insensitive em todos os campos usando LIKE com wildcards
     const searchConditions = [
       // Nome/Fantasia
@@ -206,6 +207,8 @@ export async function listClientesWithSearch(options = {}) {
       "LOWER(COALESCE(`telefone`, '')) LIKE ?",
       "LOWER(COALESCE(`celular`, '')) LIKE ?",
       "LOWER(COALESCE(`email`, '')) LIKE ?",
+      // Município (para encontrar pessoas do município mesmo sem "bonito" no nome)
+      "LOWER(COALESCE(`municipio`, '')) LIKE ?",
     ];
     
     // Para cada condição, adiciona o termo de busca com wildcards
