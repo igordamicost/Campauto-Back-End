@@ -1,11 +1,33 @@
 import * as baseService from "../services/baseService.js";
+import { listClientesWithSearch } from "../services/clientesSearchService.js";
 
 const TABLE = 'clientes';
 
 async function list(req, res) {
   const limit = Number(req.query.limit || req.query.perPage || 10);
   const page = Math.max(1, Number(req.query.page || 1));
-  const offset = (page - 1) * limit;
+  const q = req.query.q ? String(req.query.q).trim() : "";
+
+  // Se houver busca (parâmetro q), usa busca inteligente
+  if (q.length > 0) {
+    const { data, total } = await listClientesWithSearch({
+      q: q || undefined,
+      limit,
+      page,
+      sortBy: req.query.sortBy,
+      sortDir: req.query.sortDir,
+    });
+    const totalPages = Math.ceil(total / limit) || 1;
+    return res.json({
+      data,
+      page,
+      perPage: limit,
+      total,
+      totalPages,
+    });
+  }
+
+  // Caso contrário, usa busca padrão
   const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
   res.json({ data, page, perPage: limit, total, totalPages });
