@@ -172,24 +172,28 @@ export async function listClientesWithSearch(options = {}) {
 
   const q = options.q ? String(options.q).trim() : "";
   if (q) {
-    // Normaliza o termo de busca: lowercase e remove preposições comuns
-    // Isso permite encontrar "bonito" mesmo quando busca "municipio de bonito"
-    let normalizedTerm = q.toLowerCase().trim();
+    // Normaliza o termo de busca: lowercase (case-insensitive)
+    // Remove preposições para melhorar busca (ex: "municipio de bonito" -> "municipio bonito")
+    let searchTerm = q.toLowerCase().trim();
     
-    // Remove preposições comuns do termo de busca
-    for (const prep of PREPOSICOES) {
-      normalizedTerm = normalizedTerm.replace(new RegExp(prep.trim(), "gi"), " ");
+    // Remove preposições comuns do termo de busca (apenas se houver múltiplas palavras)
+    // Isso permite encontrar "bonito" mesmo quando busca "municipio de bonito"
+    if (searchTerm.includes(" ")) {
+      for (const prep of PREPOSICOES) {
+        searchTerm = searchTerm.replace(new RegExp(prep.trim(), "gi"), " ");
+      }
+      // Colapsa espaços múltiplos e trim
+      searchTerm = searchTerm.replace(/\s+/g, " ").trim();
     }
     
-    // Colapsa espaços múltiplos e trim
-    normalizedTerm = normalizedTerm.replace(/\s+/g, " ").trim();
-    
-    // Se após normalização ainda temos um termo válido, usa ele
-    // Caso contrário, usa o termo original em lowercase
-    const searchTerm = normalizedTerm.length > 0 ? normalizedTerm : q.toLowerCase();
+    // Garante que temos um termo válido (não vazio)
+    if (searchTerm.length === 0) {
+      searchTerm = q.toLowerCase().trim();
+    }
     
     // Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato
     // NÃO inclui endereço/município conforme solicitado
+    // Busca case-insensitive em todos os campos usando LIKE com wildcards
     const searchConditions = [
       // Nome/Fantasia
       "LOWER(COALESCE(`cliente`, '')) LIKE ?",
@@ -209,6 +213,8 @@ export async function listClientesWithSearch(options = {}) {
     whereParts.push(`(${conditionSql})`);
     
     // Adiciona o parâmetro para cada condição (mesmo valor para todas)
+    // Usa %termo% para busca parcial (encontra "bonito" em "MUNICIPIO DE BONITO")
+    // Exemplo: busca "bonito" encontra "BONITO", "Bonito", "MUNICIPIO DE BONITO", etc.
     searchConditions.forEach(() => {
       params.push(`%${searchTerm}%`);
     });
@@ -217,11 +223,20 @@ export async function listClientesWithSearch(options = {}) {
   const whereSql =
     whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
 
+  // Ordenação: primeiro por tipo_pessoa (J primeiro, depois F), depois por fantasia/razao_social
+  // Pessoas jurídicas (J) aparecem primeiro, depois pessoas físicas (F)
+  // Dentro de cada grupo, ordena por fantasia (ou razao_social se fantasia vazio)
+  const orderBy = `
+    ORDER BY 
+      CASE WHEN \`tipo_pessoa\` = 'J' THEN 0 ELSE 1 END ASC,
+      COALESCE(NULLIF(\`fantasia\`, ''), \`razao_social\`, \`cliente\`) ASC
+  `;
+
   const dataSql = `
     SELECT *
     FROM \`clientes\`
     ${whereSql}
-    ORDER BY \`${sortBy}\` ${sortDir}
+    ${orderBy}
     LIMIT ? OFFSET ?
   `;
   const countSql = `
