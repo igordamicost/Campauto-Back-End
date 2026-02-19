@@ -36,10 +36,9 @@ const PREPOSICOES = [
   " sem ",
 ];
 
-/** Sinônimos para normalização */
+/** Sinônimos para normalização (removido municipio conforme solicitado) */
 const SINONIMOS = {
-  municipio: ["prefeitura", "municipio", "município"],
-  prefeitura: ["prefeitura", "municipio", "município"],
+  // Removido sinônimos de municipio pois não buscamos mais por endereço
 };
 
 /**
@@ -56,7 +55,7 @@ export function normalizeSearchText(text) {
     t = t.split(prep).join(" ");
   }
   
-  // Trata sinônimos (municipio/prefeitura)
+  // Trata sinônimos (se houver)
   for (const [key, synonyms] of Object.entries(SINONIMOS)) {
     for (const synonym of synonyms) {
       // Substitui sinônimos pela palavra-chave principal
@@ -88,16 +87,20 @@ export function getSearchTerms(q) {
  * Gera expressão SQL que normaliza um conjunto de colunas concatenadas
  * (LOWER + CONCAT_WS + REPLACE das preposições e sinônimos).
  * Usado para comparar com termos normalizados.
+ * 
+ * Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato (telefone/celular/email)
+ * NÃO inclui endereço/município conforme solicitado.
  */
 function buildNormalizedConcatSql() {
-  // Campos de busca: nome (fantasia/razao_social), telefone, email, municipio
+  // Campos de busca: cliente (nome), fantasia, razao_social, cpf_cnpj, telefone, celular, email
   const searchColumns = [
-    "fantasia",
-    "razao_social",
-    "telefone",
-    "celular",
-    "email",
-    "municipio",
+    "cliente",        // Nome/Fantasia
+    "fantasia",       // Nome/Fantasia
+    "razao_social",   // Razão Social
+    "cpf_cnpj",       // CPF/CNPJ
+    "telefone",       // Contato
+    "celular",        // Contato
+    "email",          // Contato
   ];
   
   const concatParts = searchColumns
@@ -110,10 +113,6 @@ function buildNormalizedConcatSql() {
     const sqlPrep = prep.replace(/'/g, "''");
     expr = `REPLACE(${expr}, '${sqlPrep}', ' ')`;
   }
-  
-  // Trata sinônimos (municipio/prefeitura)
-  // Substitui "prefeitura" e "município" por "municipio" para normalização
-  expr = `REPLACE(REPLACE(${expr}, 'prefeitura', 'municipio'), 'município', 'municipio')`;
   
   // Colapsa espaços múltiplos
   expr = `REPLACE(REPLACE(TRIM(${expr}), '  ', ' '), '  ', ' ')`;
@@ -144,7 +143,9 @@ function isEmailTerm(term) {
 
 /**
  * Lista clientes com busca inteligente normalizada (q).
- * Busca em: nome (fantasia/razao_social), telefone (telefone/celular), email, municipio.
+ * Busca em: Nome/Fantasia (cliente, fantasia), Razão Social (razao_social), CPF/CNPJ (cpf_cnpj), Contato (telefone, celular, email).
+ * NÃO busca em endereço/município conforme solicitado.
+ * Busca é case-insensitive (não diferencia maiúsculas/minúsculas).
  * @param {Object} options
  * @param {string} [options.q] - Texto de busca (vários termos); aplica normalização.
  * @param {number} [options.limit=20]
@@ -161,7 +162,7 @@ export async function listClientesWithSearch(options = {}) {
   const columns = await getClientesColumns();
   
   // Campos válidos para ordenação
-  const validSortColumns = ["id", "fantasia", "razao_social", "municipio", "email", "telefone", "celular"];
+  const validSortColumns = ["id", "cliente", "fantasia", "razao_social", "cpf_cnpj", "email", "telefone", "celular"];
   const sortBy = validSortColumns.includes(options.sortBy) ? options.sortBy : "fantasia";
   const sortDir =
     String(options.sortDir || "asc").toLowerCase() === "desc" ? "DESC" : "ASC";
@@ -171,45 +172,46 @@ export async function listClientesWithSearch(options = {}) {
 
   const q = options.q ? String(options.q).trim() : "";
   if (q) {
-    const terms = getSearchTerms(q);
+    // Normaliza o termo de busca: lowercase e remove preposições comuns
+    // Isso permite encontrar "bonito" mesmo quando busca "municipio de bonito"
+    let normalizedTerm = q.toLowerCase().trim();
     
-    if (terms.length > 0) {
-      // Se o termo parece ser telefone, busca em telefone/celular
-      const isPhone = isPhoneTerm(q);
-      // Se o termo parece ser email, busca em email
-      const isEmail = isEmailTerm(q);
-      
-      // Busca normalizada sempre aplicada (nome, municipio, telefone, email)
-      // Isso permite encontrar "bonito" tanto no nome quanto no municipio
-      const normalizedExpr = buildNormalizedConcatSql();
-      const searchConditions = [];
-      
-      // Adiciona busca normalizada para todos os termos
-      terms.forEach((term) => {
-        searchConditions.push(`${normalizedExpr} LIKE ?`);
-        params.push(`%${term}%`);
-      });
-      
-      // Se parece ser telefone, adiciona busca específica em telefone/celular
-      if (isPhone) {
-        const phoneDigits = q.replace(/\D/g, "");
-        searchConditions.push(
-          `(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(\`telefone\`,''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(\`celular\`,''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?)`
-        );
-        params.push(`%${phoneDigits}%`, `%${phoneDigits}%`);
-      }
-      
-      // Se parece ser email, adiciona busca específica em email
-      if (isEmail) {
-        searchConditions.push(`LOWER(\`email\`) LIKE ?`);
-        params.push(`%${q.toLowerCase()}%`);
-      }
-      
-      // Combina todas as condições com OR (busca em qualquer campo)
-      if (searchConditions.length > 0) {
-        whereParts.push(`(${searchConditions.join(" OR ")})`);
-      }
+    // Remove preposições comuns do termo de busca
+    for (const prep of PREPOSICOES) {
+      normalizedTerm = normalizedTerm.replace(new RegExp(prep.trim(), "gi"), " ");
     }
+    
+    // Colapsa espaços múltiplos e trim
+    normalizedTerm = normalizedTerm.replace(/\s+/g, " ").trim();
+    
+    // Se após normalização ainda temos um termo válido, usa ele
+    // Caso contrário, usa o termo original em lowercase
+    const searchTerm = normalizedTerm.length > 0 ? normalizedTerm : q.toLowerCase();
+    
+    // Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato
+    // NÃO inclui endereço/município conforme solicitado
+    const searchConditions = [
+      // Nome/Fantasia
+      "LOWER(COALESCE(`cliente`, '')) LIKE ?",
+      "LOWER(COALESCE(`fantasia`, '')) LIKE ?",
+      // Razão Social
+      "LOWER(COALESCE(`razao_social`, '')) LIKE ?",
+      // CPF/CNPJ
+      "LOWER(COALESCE(`cpf_cnpj`, '')) LIKE ?",
+      // Contato (telefone, celular, email)
+      "LOWER(COALESCE(`telefone`, '')) LIKE ?",
+      "LOWER(COALESCE(`celular`, '')) LIKE ?",
+      "LOWER(COALESCE(`email`, '')) LIKE ?",
+    ];
+    
+    // Para cada condição, adiciona o termo de busca com wildcards
+    const conditionSql = searchConditions.join(" OR ");
+    whereParts.push(`(${conditionSql})`);
+    
+    // Adiciona o parâmetro para cada condição (mesmo valor para todas)
+    searchConditions.forEach(() => {
+      params.push(`%${searchTerm}%`);
+    });
   }
 
   const whereSql =
