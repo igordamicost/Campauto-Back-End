@@ -137,7 +137,7 @@ function normalizeJsonItens(jsonItens) {
 }
 
 async function orcamentos(req, res) {
-  const { data_inicio, data_fim, status } = req.query;
+  const { data_inicio, data_fim, status, include } = req.query;
 
   if (data_inicio && !isValidDate(data_inicio)) {
     return res.status(400).json({
@@ -151,6 +151,10 @@ async function orcamentos(req, res) {
       field: "data_fim",
     });
   }
+
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
 
   const pool = getPool();
   const where = [];
@@ -169,6 +173,11 @@ async function orcamentos(req, res) {
     params.push(status);
   }
 
+  if (!isMaster && req.user?.userId) {
+    where.push("o.usuario_id = ?");
+    params.push(req.user.userId);
+  }
+
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const sql = `
@@ -178,6 +187,8 @@ async function orcamentos(req, res) {
       o.data,
       o.status,
       o.json_itens,
+      o.usuario_id,
+      o.empresa_id,
       c.id AS cliente_id,
       c.cliente AS cliente_nome,
       c.fantasia AS cliente_fantasia,
@@ -196,6 +207,10 @@ async function orcamentos(req, res) {
     return res.status(500).json({ message: "Erro ao processar relatório" });
   }
 
+  const includeList = include ? String(include).split(",").map((s) => s.trim()) : [];
+  const includeResponsavel = includeList.includes("responsavel") || includeList.includes("usuario") || includeList.includes("usuarios");
+  const includeEmpresas = includeList.includes("empresas");
+
   const data = rows.map((row) => {
     const jsonItens = normalizeJsonItens(row.json_itens);
     const dataStr =
@@ -209,6 +224,8 @@ async function orcamentos(req, res) {
       data: dataStr,
       status: row.status || "Cotação",
       json_itens: jsonItens,
+      usuario_id: row.usuario_id || null,
+      empresa_id: row.empresa_id || null,
     };
 
     if (row.cliente_id) {
@@ -224,6 +241,57 @@ async function orcamentos(req, res) {
 
     return item;
   });
+
+  if (includeResponsavel) {
+    const usuarioIds = [...new Set(data.map((row) => row.usuario_id).filter(Boolean))];
+    if (usuarioIds.length > 0) {
+      const [userRows] = await pool.query(
+        `SELECT id, name, email, role FROM users WHERE id IN (${usuarioIds
+          .map(() => "?")
+          .join(",")})`,
+        usuarioIds
+      );
+      const userMap = new Map(
+        userRows.map((u) => [
+          u.id,
+          {
+            id: u.id,
+            name: u.name,
+            nome: u.name,
+            email: u.email,
+            role: u.role,
+          },
+        ])
+      );
+      data.forEach((item) => {
+        item.responsavel = item.usuario_id ? (userMap.get(item.usuario_id) || null) : null;
+      });
+    } else {
+      data.forEach((item) => {
+        item.responsavel = null;
+      });
+    }
+  }
+
+  if (includeEmpresas) {
+    const empresaIds = [...new Set(data.map((row) => row.empresa_id).filter(Boolean))];
+    if (empresaIds.length > 0) {
+      const [empresaRows] = await pool.query(
+        `SELECT id, nome_fantasia, razao_social, cnpj FROM empresas WHERE id IN (${empresaIds
+          .map(() => "?")
+          .join(",")})`,
+        empresaIds
+      );
+      const empresaMap = new Map(empresaRows.map((e) => [e.id, e]));
+      data.forEach((item) => {
+        item.empresas = item.empresa_id ? (empresaMap.get(item.empresa_id) || null) : null;
+      });
+    } else {
+      data.forEach((item) => {
+        item.empresas = null;
+      });
+    }
+  }
 
   const agregacoes = buildAgregacoes(data, data_fim, data_inicio);
 
