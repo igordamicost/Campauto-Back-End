@@ -12,5 +12,6 @@ router.use(masterOnly);
 
 router.post("/google-mail", asyncHandler(controller.configGoogleMail));
 router.post("/google-mail/test", asyncHandler(controller.testGoogleMail));
+router.post("/google-mail/exchange-code", asyncHandler(controller.exchangeCode));
 
 export default router;

@@ -77,6 +77,11 @@ export class MigrationService {
         tables: ["notifications", "notification_sent_log"],
         name: "Notifications",
       },
+      {
+        file: "009_veiculos.sql",
+        tables: ["veiculos"],
+        name: "Veículos",
+      },
     ];
 
     let executed = 0;

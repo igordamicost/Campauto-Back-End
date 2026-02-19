@@ -22,8 +22,9 @@ async function login(req, res) {
   );
 
   const user = rows[0];
-  if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-  if (user.blocked) return res.status(403).json({ message: 'Account is blocked' });
+  const invalidCreds = { message: 'E-mail ou senha incorretos' };
+  if (!user) return res.status(401).json(invalidCreds);
+  if (user.blocked) return res.status(403).json({ message: 'Conta bloqueada' });
   if (!user.password) return res.status(403).json({ message: 'Defina sua senha primeiro (verifique o e-mail)' });
 
   let ok = false;
@@ -34,7 +35,7 @@ async function login(req, res) {
     ok = hash === user.password;
   }
 
-  if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+  if (!ok) return res.status(401).json(invalidCreds);
 
   const token = jwt.sign(
     { userId: user.id, roleId: user.role_id },

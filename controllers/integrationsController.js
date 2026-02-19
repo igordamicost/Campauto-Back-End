@@ -95,4 +95,81 @@ async function testGoogleMail(req, res) {
   return res.status(500).json({ message: result.error || "Falha ao enviar e-mail" });
 }
 
-export { configGoogleMail, testGoogleMail };
+const exchangeCodeSchema = z.object({
+  code: z.string().min(1),
+  redirectUri: z.string().url(),
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1),
+});
+
+/**
+ * Troca o code OAuth do Google por refresh_token.
+ * Deve ser chamado apenas pelo backend (nunca expor clientSecret no front).
+ * Retorna { refreshToken, senderEmail? }.
+ */
+async function exchangeCode(req, res) {
+  const parsed = exchangeCodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Dados inválidos",
+      errors: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const { code, redirectUri, clientId, clientSecret } = parsed.data;
+
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+  });
+
+  let tokenRes;
+  try {
+    tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+  } catch (err) {
+    console.error("Erro ao chamar Google OAuth:", err?.message);
+    return res.status(502).json({ message: "Falha ao comunicar com Google" });
+  }
+
+  const data = await tokenRes.json().catch(() => ({}));
+
+  if (!tokenRes.ok) {
+    return res.status(400).json({
+      message: data.error_description || data.error || "Falha ao trocar code por token",
+    });
+  }
+
+  const refreshToken = data.refresh_token || null;
+  if (!refreshToken) {
+    return res.status(400).json({
+      message: "Google não retornou refresh_token. Verifique se o consentimento inclui acesso offline.",
+    });
+  }
+
+  let senderEmail = null;
+  const accessToken = data.access_token;
+  if (accessToken) {
+    try {
+      const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        senderEmail = userData.email || null;
+      }
+    } catch {
+      // opcional
+    }
+  }
+
+  return res.json({ refreshToken, senderEmail });
+}
+
+export { configGoogleMail, testGoogleMail, exchangeCode };

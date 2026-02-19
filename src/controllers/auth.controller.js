@@ -96,3 +96,35 @@ export async function setPassword(req, res) {
 
   return res.json({ ok: true });
 }
+
+/**
+ * Reset-password: redefinir senha com token (link do e-mail de recuperação).
+ * Body: { token, password } (front pode enviar "password" em vez de "newPassword").
+ */
+export async function resetPassword(req, res) {
+  const { token, password, newPassword } = req.body || {};
+  const pwd = password ?? newPassword;
+
+  if (!token) {
+    return res.status(400).json({ message: "Token é obrigatório" });
+  }
+
+  const pwdError = validatePassword(pwd);
+  if (pwdError) {
+    return res.status(400).json({ message: pwdError });
+  }
+
+  const userId = await consumeToken(token);
+  if (!userId) {
+    return res.status(400).json({ message: "Token inválido ou expirado" });
+  }
+
+  const hash = await bcrypt.hash(pwd, 12);
+
+  await db.query(
+    "UPDATE users SET password = ?, must_set_password = 0 WHERE id = ?",
+    [hash, userId]
+  );
+
+  return res.json({ ok: true });
+}
