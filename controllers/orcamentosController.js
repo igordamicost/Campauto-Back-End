@@ -379,6 +379,29 @@ async function updateStatus(req, res) {
 }
 
 async function remove(req, res) {
+  const pool = getPool();
+  const orcamentoId = Number(req.params.id);
+
+  // Buscar orçamento para verificar status
+  const [orcamentoRows] = await pool.query(
+    "SELECT id, status FROM orcamentos WHERE id = ?",
+    [orcamentoId]
+  );
+
+  if (orcamentoRows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const status = orcamentoRows[0].status;
+
+  // Permitir delete apenas se status for 'Cotação' ou 'Cancelado'
+  if (status !== 'Cotação' && status !== 'Cancelado') {
+    return res.status(409).json({
+      message: `Orçamento não pode ser excluído. Apenas orçamentos com status 'Cotação' ou 'Cancelado' podem ser excluídos. Status atual: ${status}`,
+      status_atual: status,
+    });
+  }
+
   const ok = await baseService.remove(TABLE, req.params.id);
   if (!ok) return res.status(404).json({ message: "Not found" });
   res.json({ message: "Deleted" });

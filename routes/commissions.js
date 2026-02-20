@@ -14,4 +14,7 @@ router.get("/", requirePermission("commissions.read"), reportsController.getMyCo
 // Comissões por vendedor (admin)
 router.get("/by-salesperson", requirePermission("commissions.read"), reportsController.getCommissionsBySalesperson);
 
+// Calcular comissão para uma venda (requer permissão de admin)
+router.post("/calculate/:saleId", requirePermission("commissions.read"), reportsController.calculateCommission);
+
 export default router;

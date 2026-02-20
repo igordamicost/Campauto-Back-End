@@ -1,4 +1,5 @@
 import { db } from "../src/config/database.js";
+import { CommissionService } from "../src/services/commissionService.js";
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -176,8 +177,32 @@ async function getCommissionsBySalesperson(req, res) {
   }
 }
 
+/**
+ * Calcula comissão para uma venda específica
+ * POST /commissions/calculate/:saleId
+ */
+async function calculateCommission(req, res) {
+  try {
+    const { saleId } = req.params;
+
+    const result = await CommissionService.recalculateCommission(Number(saleId));
+
+    return res.json({
+      message: "Comissão calculada com sucesso",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error calculating commission:", error);
+    if (error.message === 'Venda não encontrada') {
+      return res.status(404).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Erro ao calcular comissão" });
+  }
+}
+
 export default {
   getMySales: asyncHandler(getMySales),
   getMyCommissions: asyncHandler(getMyCommissions),
   getCommissionsBySalesperson: asyncHandler(getCommissionsBySalesperson),
+  calculateCommission: asyncHandler(calculateCommission),
 };

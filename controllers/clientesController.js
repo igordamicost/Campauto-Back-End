@@ -52,6 +52,49 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
+  const { getPool } = await import("../db.js");
+  const pool = getPool();
+  const clienteId = Number(req.params.id);
+
+  // Verificar se cliente existe
+  const [clienteRows] = await pool.query("SELECT id FROM clientes WHERE id = ?", [clienteId]);
+  if (clienteRows.length === 0) {
+    return res.status(404).json({ message: 'Cliente não encontrado' });
+  }
+
+  // Verificar se há orçamentos vinculados
+  const [orcamentosRows] = await pool.query(
+    "SELECT COUNT(*) AS total FROM orcamentos WHERE cliente_id = ?",
+    [clienteId]
+  );
+  const totalOrcamentos = Number(orcamentosRows[0]?.total || 0);
+
+  if (totalOrcamentos > 0) {
+    return res.status(409).json({
+      message: `Cliente não pode ser excluído pois está vinculado a ${totalOrcamentos} orçamento(s)`,
+      total_orcamentos: totalOrcamentos,
+    });
+  }
+
+  // Verificar se há vendas vinculadas (se tabela sales existir)
+  const [salesTableExists] = await pool.query(
+    "SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'sales'"
+  );
+  if (salesTableExists[0]?.cnt > 0) {
+    const [salesRows] = await pool.query(
+      "SELECT COUNT(*) AS total FROM sales WHERE customer_id = ?",
+      [clienteId]
+    );
+    const totalSales = Number(salesRows[0]?.total || 0);
+    if (totalSales > 0) {
+      return res.status(409).json({
+        message: `Cliente não pode ser excluído pois está vinculado a ${totalSales} venda(s)`,
+        total_vendas: totalSales,
+      });
+    }
+  }
+
+  // Se passou todas as validações, pode deletar
   const ok = await baseService.remove(TABLE, req.params.id);
   if (!ok) return res.status(404).json({ message: 'Not found' });
   res.json({ message: 'Deleted' });
