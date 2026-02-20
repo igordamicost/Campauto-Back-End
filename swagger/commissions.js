@@ -126,3 +126,54 @@
  *       403:
  *         description: Sem permissão commissions.read
  */
+
+/**
+ * @openapi
+ * /commissions/calculate/{saleId}:
+ *   post:
+ *     summary: Calcula e cria comissão para uma venda (requer commissions.read)
+ *     tags: [Comissões]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: saleId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da venda
+ *     responses:
+ *       200:
+ *         description: Comissão calculada e criada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 commission:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     sale_id:
+ *                       type: integer
+ *                     salesperson_user_id:
+ *                       type: integer
+ *                     base_amount:
+ *                       type: number
+ *                     commission_rate:
+ *                       type: number
+ *                     commission_amount:
+ *                       type: number
+ *                     status:
+ *                       type: string
+ *                       enum: [PENDING, PAID, CANCELED]
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Venda não encontrada
+ *       400:
+ *         description: Venda já possui comissão calculada
+ *       403:
+ *         description: Sem permissão commissions.read
+ */
