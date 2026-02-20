@@ -24,6 +24,7 @@ import oficinaRoutes from "./routes/oficina.js";
 import pessoasRoutes from "./routes/pessoas.js";
 import fiscalRoutes from "./routes/fiscal.js";
 import commissionRulesRoutes from "./routes/commissionRules.js";
+import financeiroRoutes from "./routes/financeiro.js";
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use("/oficina", oficinaRoutes);
 app.use("/pessoas", pessoasRoutes);
 app.use("/fiscal", fiscalRoutes);
 app.use("/admin/commission-rules", commissionRulesRoutes);
+app.use("/financeiro", financeiroRoutes);
 app.use("/docs", swaggerUi.serve, (req, res, next) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const spec = {
