@@ -245,3 +245,202 @@
  *       403:
  *         description: Sem permissão
  */
+
+/**
+ * @openapi
+ * /stock/compras:
+ *   get:
+ *     summary: Lista compras
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: fornecedor_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [RASCUNHO, PENDENTE, FINALIZADA, CANCELADA]
+ *       - in: query
+ *         name: data_inicio
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: data_fim
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de compras paginada
+ */
+
+/**
+ * @openapi
+ * /stock/compras/{id}:
+ *   get:
+ *     summary: Busca compra por ID com itens
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Compra encontrada com itens
+ *       404:
+ *         description: Compra não encontrada
+ */
+
+/**
+ * @openapi
+ * /stock/compras:
+ *   post:
+ *     summary: Cria compra
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [data, itens]
+ *             properties:
+ *               fornecedor_id:
+ *                 type: integer
+ *               data:
+ *                 type: string
+ *                 format: date
+ *               data_entrega:
+ *                 type: string
+ *                 format: date
+ *               desconto:
+ *                 type: number
+ *                 default: 0
+ *               observacoes:
+ *                 type: string
+ *               itens:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required: [produto_id, quantidade, valor_unitario]
+ *                   properties:
+ *                     produto_id:
+ *                       type: integer
+ *                     quantidade:
+ *                       type: number
+ *                       minimum: 0.001
+ *                     valor_unitario:
+ *                       type: number
+ *                       minimum: 0.01
+ *     responses:
+ *       201:
+ *         description: Compra criada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ */
+
+/**
+ * @openapi
+ * /stock/compras/{id}:
+ *   put:
+ *     summary: Atualiza compra
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Compra atualizada
+ *       409:
+ *         description: Compra finalizada não pode ser editada
+ */
+
+/**
+ * @openapi
+ * /stock/compras/{id}:
+ *   delete:
+ *     summary: Remove compra
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Compra excluída
+ *       409:
+ *         description: Compra finalizada não pode ser excluída
+ */
+
+/**
+ * @openapi
+ * /stock/compras/{id}/finalizar:
+ *   patch:
+ *     summary: Finaliza compra e cria movimentações de estoque
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     description: |
+ *       Finaliza a compra alterando status para FINALIZADA e:
+ *       - Cria movimentações de estoque (ENTRY) para cada item
+ *       - Atualiza saldos de estoque (stock_balances)
+ *       - Opcionalmente cria conta a pagar se fornecedor informado
+ *     responses:
+ *       200:
+ *         description: Compra finalizada com sucesso
+ *       409:
+ *         description: Compra já está finalizada ou cancelada
+ *       400:
+ *         description: Compra não possui itens
+ */
