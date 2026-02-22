@@ -82,6 +82,11 @@ export class MigrationService {
         tables: ["veiculos"],
         name: "Veículos",
       },
+      {
+        file: "015_cotacoes_compra_fornecedores.sql",
+        tables: ["cotacoes_compra", "fornecedores"],
+        name: "Cotações de Compra e Fornecedores",
+      },
     ];
 
     let executed = 0;
