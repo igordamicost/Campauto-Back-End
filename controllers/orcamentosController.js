@@ -35,7 +35,9 @@ const STATUS_VALIDOS = [
   "Cotação",
   "Aprovado",
   "Separado",
+  "Oficina",
   "Faturado",
+  "Finalizado",
   "Cancelado"
 ];
 

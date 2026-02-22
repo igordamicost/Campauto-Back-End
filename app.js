@@ -25,6 +25,8 @@ import pessoasRoutes from "./routes/pessoas.js";
 import fiscalRoutes from "./routes/fiscal.js";
 import commissionRulesRoutes from "./routes/commissionRules.js";
 import financeiroRoutes from "./routes/financeiro.js";
+import cotacoesCompraRoutes from "./routes/cotacoesCompra.js";
+import fornecedoresRoutes from "./routes/fornecedores.js";
 
 const app = express();
 
@@ -54,6 +56,8 @@ app.use("/pessoas", pessoasRoutes);
 app.use("/fiscal", fiscalRoutes);
 app.use("/admin/commission-rules", commissionRulesRoutes);
 app.use("/financeiro", financeiroRoutes);
+app.use("/cotacoes-compra", cotacoesCompraRoutes);
+app.use("/fornecedores", fornecedoresRoutes);
 app.use("/docs", swaggerUi.serve, (req, res, next) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const spec = {
