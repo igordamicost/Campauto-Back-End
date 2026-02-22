@@ -1,13 +1,35 @@
 import express from "express";
 import adminController from "../controllers/adminController.js";
+import * as servicosController from "../controllers/servicosController.js";
+import * as elevadoresController from "../controllers/elevadoresController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
 import { requirePermission } from "../src/middlewares/permissions.js";
 
 const router = express.Router();
+const asyncHandler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 
 // Todas as rotas requerem autenticação e permissão de admin
 router.use(authMiddleware);
 router.use(requirePermission("admin.users.manage"));
+
+// Serviços (Administração > Serviços) – rotas aninhadas antes de /:id
+router.get("/servicos", asyncHandler(servicosController.list));
+router.post("/servicos", asyncHandler(servicosController.create));
+router.get("/servicos/:servicoId/itens", asyncHandler(servicosController.listItens));
+router.post("/servicos/:servicoId/itens", asyncHandler(servicosController.createItem));
+router.put("/servicos/:servicoId/itens/:id", asyncHandler(servicosController.updateItem));
+router.delete("/servicos/:servicoId/itens/:id", asyncHandler(servicosController.removeItem));
+router.get("/servicos/:id", asyncHandler(servicosController.getById));
+router.put("/servicos/:id", asyncHandler(servicosController.update));
+router.delete("/servicos/:id", asyncHandler(servicosController.remove));
+
+// Elevadores (Administração > Elevadores)
+router.get("/elevadores", asyncHandler(elevadoresController.list));
+router.get("/elevadores/:id", asyncHandler(elevadoresController.getById));
+router.post("/elevadores", asyncHandler(elevadoresController.create));
+router.put("/elevadores/:id", asyncHandler(elevadoresController.update));
+router.delete("/elevadores/:id", asyncHandler(elevadoresController.remove));
 
 // Usuários
 router.get("/users", adminController.listUsers);

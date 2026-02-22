@@ -1,12 +1,17 @@
 import express from "express";
 import * as controller from "../controllers/oficinaController.js";
+import * as elevadoresController from "../controllers/elevadoresController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
+import { requirePermission } from "../src/middlewares/permissions.js";
 
 const router = express.Router();
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
 router.use(authMiddleware);
+
+// Elevadores (Pátio Kanban – mesma lista que admin, com permissão de oficina)
+router.get("/elevadores", requirePermission("service_orders.read"), asyncHandler(elevadoresController.list));
 
 // OS
 router.get("/os", asyncHandler(controller.listOS));
