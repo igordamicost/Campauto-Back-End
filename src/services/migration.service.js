@@ -97,6 +97,11 @@ export class MigrationService {
         tables: ["elevadores"],
         name: "Elevadores (Administração / Pátio)",
       },
+      {
+        file: "018_orcamento_servicos_totais_historico.sql",
+        tables: ["servico_item_valor_historico"],
+        name: "Orçamento Serviços / Totais / Histórico",
+      },
     ];
 
     let executed = 0;

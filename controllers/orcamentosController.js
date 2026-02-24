@@ -2,21 +2,21 @@ import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
 
 const TABLE = "orcamentos";
+const TABLE_HISTORICO = "servico_item_valor_historico";
 
-function calcularTotais(jsonItens, desconto = 0) {
-  if (!jsonItens || !Array.isArray(jsonItens)) {
-    return { subtotal: 0, desconto: 0, total: 0 };
-  }
-
-  const subtotal = jsonItens.reduce((sum, item) => {
-    const total = parseFloat(item?.total) || 0;
-    return sum + total;
-  }, 0);
-
+function calcularTotais(jsonItens, jsonItensServico, desconto = 0) {
+  const totalPecas = !jsonItens || !Array.isArray(jsonItens)
+    ? 0
+    : jsonItens.reduce((sum, item) => sum + (parseFloat(item?.total) || 0), 0);
+  const totalServico = !jsonItensServico || !Array.isArray(jsonItensServico)
+    ? 0
+    : jsonItensServico.reduce((sum, item) => sum + (parseFloat(item?.valor_unitario) || 0), 0);
+  const subtotal = totalPecas + totalServico;
   const descontoValue = parseFloat(desconto) || 0;
   const total = subtotal - descontoValue;
-
   return {
+    total_pecas: parseFloat(totalPecas.toFixed(2)),
+    total_servico: parseFloat(totalServico.toFixed(2)),
     subtotal: parseFloat(subtotal.toFixed(2)),
     desconto: parseFloat(descontoValue.toFixed(2)),
     total: parseFloat(total.toFixed(2))
@@ -63,6 +63,51 @@ function normalizeJsonItens(jsonItens) {
   }
 
   return { parsed: null, error: "json_itens deve ser array" };
+}
+
+function normalizeJsonItensServico(jsonItensServico) {
+  if (jsonItensServico === undefined || jsonItensServico === null || jsonItensServico === "") {
+    return { parsed: [], error: null };
+  }
+  if (Array.isArray(jsonItensServico)) {
+    for (const item of jsonItensServico) {
+      if (item != null && (item.servico_id === undefined || item.item_id === undefined || item.valor_unitario === undefined)) {
+        return { parsed: null, error: "Cada item de serviço deve ter servico_id, item_id e valor_unitario" };
+      }
+    }
+    return { parsed: jsonItensServico, error: null };
+  }
+  if (typeof jsonItensServico === "string") {
+    try {
+      const parsed = JSON.parse(jsonItensServico);
+      if (!Array.isArray(parsed)) {
+        return { parsed: null, error: "json_itens_servico deve ser array" };
+      }
+      for (const item of parsed) {
+        if (item != null && (item.servico_id === undefined || item.item_id === undefined || item.valor_unitario === undefined)) {
+          return { parsed: null, error: "Cada item de serviço deve ter servico_id, item_id e valor_unitario" };
+        }
+      }
+      return { parsed, error: null };
+    } catch (error) {
+      return { parsed: null, error: "json_itens_servico inválido" };
+    }
+  }
+  return { parsed: null, error: "json_itens_servico deve ser array" };
+}
+
+async function gravarHistoricoValorServico(pool, orcamentoId, jsonItensServico, dataOrcamento) {
+  if (!jsonItensServico || !Array.isArray(jsonItensServico)) return;
+  const dataStr = dataOrcamento ? String(dataOrcamento).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  for (const item of jsonItensServico) {
+    const itemId = item?.item_id != null ? Number(item.item_id) : null;
+    const valor = item?.valor_unitario != null ? Number(item.valor_unitario) : null;
+    if (itemId == null || Number.isNaN(itemId) || valor == null || Number.isNaN(valor)) continue;
+    await pool.query(
+      `INSERT INTO ${TABLE_HISTORICO} (servico_item_id, orcamento_id, valor, data) VALUES (?, ?, ?, ?)`,
+      [itemId, orcamentoId, valor, dataStr]
+    );
+  }
 }
 
 async function tableExists(table) {
@@ -276,6 +321,48 @@ async function getById(req, res) {
     item.veiculos = veiculos[0] || null;
   }
 
+  const hasHistorico = await tableExists(TABLE_HISTORICO);
+  let jsonItensServico = item.json_itens_servico;
+  if (jsonItensServico !== undefined && jsonItensServico !== null) {
+    if (typeof jsonItensServico === "string") {
+      try {
+        jsonItensServico = JSON.parse(jsonItensServico);
+      } catch {
+        jsonItensServico = [];
+      }
+    }
+    if (Array.isArray(jsonItensServico) && hasHistorico && jsonItensServico.length > 0) {
+      const itemIds = [...new Set(jsonItensServico.map((i) => i?.item_id).filter((id) => id != null && !Number.isNaN(Number(id))))];
+      if (itemIds.length > 0) {
+        const placeholders = itemIds.map(() => "?").join(",");
+        const [histRows] = await pool.query(
+          `SELECT servico_item_id, valor, data FROM ${TABLE_HISTORICO}
+           WHERE servico_item_id IN (${placeholders})
+           ORDER BY data DESC, id DESC`,
+          itemIds
+        );
+        const historicoByItem = new Map();
+        for (const row of histRows) {
+          const sid = row.servico_item_id;
+          if (!historicoByItem.has(sid)) {
+            historicoByItem.set(sid, []);
+          }
+          historicoByItem.get(sid).push({
+            valor: Number(row.valor),
+            data: row.data ? (row.data instanceof Date ? row.data.toISOString().slice(0, 10) : String(row.data).slice(0, 10)) : null,
+          });
+        }
+        jsonItensServico = jsonItensServico.map((it) => ({
+          ...it,
+          historico_valor: historicoByItem.get(Number(it?.item_id)) || [],
+        }));
+      }
+    }
+  } else {
+    jsonItensServico = [];
+  }
+  item.json_itens_servico = jsonItensServico;
+
   res.json(item);
 }
 
@@ -300,10 +387,18 @@ async function create(req, res) {
     return res.status(400).json({ message: jsonItensError });
   }
 
+  const { parsed: jsonItensServicoParsed, error: jsonItensServicoError } = normalizeJsonItensServico(
+    req.body.json_itens_servico
+  );
+  if (jsonItensServicoError) {
+    return res.status(400).json({ message: jsonItensServicoError });
+  }
+
   const numeroSequencial = await getProximoNumeroSequencial();
 
-  const { subtotal, desconto, total } = calcularTotais(
+  const { total_pecas, total_servico, subtotal, desconto, total } = calcularTotais(
     jsonItensParsed,
+    jsonItensServicoParsed,
     req.body.desconto || 0
   );
 
@@ -317,15 +412,23 @@ async function create(req, res) {
   const dados = {
     ...req.body,
     json_itens: jsonItensParsed ? JSON.stringify(jsonItensParsed) : null,
+    json_itens_servico: jsonItensServicoParsed?.length
+      ? JSON.stringify(jsonItensServicoParsed)
+      : (Array.isArray(jsonItensServicoParsed) ? "[]" : null),
     numero_sequencial: numeroSequencial,
     usuario_id: userId,
     subtotal,
     desconto,
-    total
+    total,
+    total_pecas,
+    total_servico,
   };
 
   const id = await baseService.create(TABLE, dados);
   if (!id) return res.status(409).json({ message: "Duplicate or invalid" });
+
+  const pool = getPool();
+  await gravarHistoricoValorServico(pool, id, jsonItensServicoParsed, req.body.data);
 
   res.status(201).json({ id, numero_sequencial: numeroSequencial });
 }
@@ -347,21 +450,41 @@ async function update(req, res) {
     return res.status(400).json({ message: jsonItensError });
   }
 
+  const { parsed: jsonItensServicoParsed, error: jsonItensServicoError } = normalizeJsonItensServico(
+    dados.json_itens_servico
+  );
+  if (jsonItensServicoError) {
+    return res.status(400).json({ message: jsonItensServicoError });
+  }
+
+  const { total_pecas, total_servico, subtotal, desconto, total } = calcularTotais(
+    jsonItensParsed,
+    jsonItensServicoParsed,
+    dados.desconto ?? 0
+  );
+
   if (jsonItensParsed) {
-    const { subtotal, desconto, total } = calcularTotais(
-      jsonItensParsed,
-      dados.desconto || 0
-    );
-    dados.subtotal = subtotal;
-    dados.desconto = desconto || 0;
-    dados.total = total;
     dados.json_itens = JSON.stringify(jsonItensParsed);
   } else if (dados.json_itens !== undefined) {
     dados.json_itens = null;
   }
+  dados.json_itens_servico = jsonItensServicoParsed && jsonItensServicoParsed.length > 0
+    ? JSON.stringify(jsonItensServicoParsed)
+    : (jsonItensServicoParsed && Array.isArray(jsonItensServicoParsed) ? "[]" : null);
+  dados.subtotal = subtotal;
+  dados.desconto = desconto;
+  dados.total = total;
+  dados.total_pecas = total_pecas;
+  dados.total_servico = total_servico;
 
   const ok = await baseService.update(TABLE, req.params.id, dados);
   if (!ok) return res.status(404).json({ message: "Not found or empty body" });
+
+  const pool = getPool();
+  const orcamentoId = Number(req.params.id);
+  const dataOrcamento = dados.data || null;
+  await gravarHistoricoValorServico(pool, orcamentoId, jsonItensServicoParsed, dataOrcamento);
+
   res.json({ message: "Updated" });
 }
 
