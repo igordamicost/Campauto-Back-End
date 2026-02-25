@@ -11,7 +11,28 @@ const asyncHandler = (fn) => (req, res, next) =>
 router.use(authMiddleware);
 
 // Elevadores (Pátio Kanban – mesma lista que admin, com permissão de oficina)
-router.get("/elevadores", requirePermission("service_orders.read"), asyncHandler(elevadoresController.list));
+router.get(
+  "/elevadores",
+  requirePermission("service_orders.read"),
+  asyncHandler(elevadoresController.list)
+);
+
+// Pátio (Kanban)
+router.get(
+  "/patio",
+  requirePermission("service_orders.read"),
+  asyncHandler(controller.listPatio)
+);
+router.patch(
+  "/patio/:orcamentoId",
+  requirePermission("service_orders.update"),
+  asyncHandler(controller.movePatio)
+);
+router.patch(
+  "/patio/:orcamentoId/checklist",
+  requirePermission("service_orders.update"),
+  asyncHandler(controller.updatePatioChecklist)
+);
 
 // OS
 router.get("/os", asyncHandler(controller.listOS));

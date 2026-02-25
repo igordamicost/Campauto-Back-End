@@ -582,6 +582,45 @@ async function updateStatus(req, res) {
     return res.status(400).json({ message: "status inválido" });
   }
 
+  // Regra: não permitir Faturar se houver checklist de serviços incompleto
+  if (status === "Faturado") {
+    const pool = getPool();
+    const orcamentoId = Number(req.params.id);
+    const [rows] = await pool.query(
+      "SELECT json_itens_servico FROM orcamentos WHERE id = ?",
+      [orcamentoId]
+    );
+    if (rows.length > 0) {
+      let servicos = rows[0].json_itens_servico;
+      if (typeof servicos === "string") {
+        try {
+          servicos = JSON.parse(servicos);
+        } catch {
+          servicos = [];
+        }
+      }
+      if (Array.isArray(servicos) && servicos.length > 0) {
+        let incompleto = false;
+        for (const s of servicos) {
+          if (Array.isArray(s?.itens) && s.itens.length > 0) {
+            if (s.itens.some((it) => !it.concluido)) {
+              incompleto = true;
+              break;
+            }
+          } else if (s.concluido === false) {
+            incompleto = true;
+            break;
+          }
+        }
+        if (incompleto) {
+          return res.status(409).json({
+            message: "Checklist incompleto. Todos os itens de serviço devem estar concluídos antes de faturar.",
+          });
+        }
+      }
+    }
+  }
+
   const ok = await baseService.update(TABLE, req.params.id, { status });
   if (!ok) return res.status(404).json({ message: "Not found" });
   res.json({ message: "Status updated" });

@@ -1,7 +1,93 @@
 import { getPool } from "../db.js";
 
-const TABLE_OS = 'oficina_os';
-const TABLE_CHECKLIST = 'os_checklists';
+const TABLE_OS = "oficina_os";
+const TABLE_CHECKLIST = "os_checklists";
+
+function parseJson(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function toServicosFromJson(json_itens_servico_raw) {
+  const arr = parseJson(json_itens_servico_raw) || [];
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+
+  const hasNested = arr.some((s) => Array.isArray(s?.itens));
+
+  if (hasNested) {
+    // Novo formato: uma linha por serviço
+    return arr.map((s) => ({
+      servico_id: s.servico_id,
+      servico_nome: s.servico_nome,
+      valor_unitario: Number(s.valor_unitario || 0),
+      itens: Array.isArray(s.itens)
+        ? s.itens.map((it) => ({
+            item_id: it.item_id,
+            descricao: it.descricao,
+            concluido: !!it.concluido,
+          }))
+        : [],
+    }));
+  }
+
+  // Formato antigo \"flat\": uma linha por subitem com valor próprio
+  const mapServicos = new Map();
+
+  for (const it of arr) {
+    if (!it) continue;
+    const servicoId = it.servico_id != null ? Number(it.servico_id) : null;
+    if (servicoId == null || Number.isNaN(servicoId)) continue;
+    const key = servicoId;
+    const atual =
+      mapServicos.get(key) || {
+        servico_id: servicoId,
+        servico_nome: it.servico_nome,
+        valor_unitario: 0,
+        itens: [],
+      };
+    const valor = it.valor_unitario != null ? Number(it.valor_unitario) : 0;
+    atual.valor_unitario += valor;
+    if (it.item_id != null || it.descricao != null) {
+      atual.itens.push({
+        item_id: it.item_id,
+        descricao: it.descricao,
+        concluido: !!it.concluido,
+      });
+    }
+    mapServicos.set(key, atual);
+  }
+
+  return Array.from(mapServicos.values());
+}
+
+function buildOrcamentoResumo(row) {
+  const servicos = toServicosFromJson(row.json_itens_servico);
+  const veiculos =
+    row.veiculo_id != null
+      ? {
+          placa: row.veiculo_placa || null,
+          marca: row.veiculo_marca || null,
+          modelo: row.veiculo_modelo || null,
+        }
+      : null;
+
+  return {
+    id: row.id,
+    numero_sequencial: row.numero_sequencial,
+    status: row.status,
+    elevador_id: row.elevador_id ?? null,
+    veiculos,
+    json_itens_servico: servicos,
+  };
+}
 
 async function gerarNumeroOS(pool) {
   // Buscar último número
@@ -33,6 +119,165 @@ async function calcularValorTotal(pool, osId) {
 
   const valorTotal = Number(osRows[0].valor_servicos || 0) + Number(osRows[0].valor_pecas || 0);
   await pool.query(`UPDATE ${TABLE_OS} SET valor_total = ? WHERE id = ?`, [valorTotal, osId]);
+}
+
+// ---------- PÁTIO (Kanban) ----------
+
+async function listPatio(req, res) {
+  const pool = getPool();
+
+  const [rows] = await pool.query(
+    `
+      SELECT
+        o.id,
+        o.numero_sequencial,
+        o.status,
+        o.elevador_id,
+        o.veiculo_id,
+        o.json_itens_servico,
+        v.marca AS veiculo_marca,
+        v.modelo AS veiculo_modelo,
+        v.placa AS veiculo_placa
+      FROM orcamentos o
+      LEFT JOIN veiculos v ON o.veiculo_id = v.id
+      WHERE o.status IN ('Aprovado', 'Separado', 'Oficina', 'Faturado')
+    `
+  );
+
+  const fila = [];
+  const elevadores = {};
+  const finalizado = [];
+
+  for (const row of rows) {
+    const resumo = buildOrcamentoResumo(row);
+    if (resumo.status === "Faturado") {
+      finalizado.push(resumo);
+    } else if (resumo.status === "Oficina" && resumo.elevador_id != null) {
+      const key = String(resumo.elevador_id);
+      if (!elevadores[key]) elevadores[key] = [];
+      elevadores[key].push(resumo);
+    } else if (resumo.status === "Aprovado" || resumo.status === "Separado") {
+      fila.push(resumo);
+    }
+  }
+
+  res.json({ fila, elevadores, finalizado });
+}
+
+async function movePatio(req, res) {
+  const pool = getPool();
+  const orcamentoId = Number(req.params.orcamentoId);
+  if (!orcamentoId || Number.isNaN(orcamentoId)) {
+    return res.status(400).json({ message: "orcamentoId inválido" });
+  }
+
+  const { elevador_id } = req.body || {};
+
+  const [orcRows] = await pool.query(
+    "SELECT id, status, empresa_id, elevador_id FROM orcamentos WHERE id = ?",
+    [orcamentoId]
+  );
+  if (orcRows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+  const orc = orcRows[0];
+
+  if (elevador_id === undefined) {
+    return res.status(400).json({ message: "elevador_id é obrigatório" });
+  }
+
+  if (elevador_id === null) {
+    // Volta para fila
+    let newStatus = orc.status;
+    if (newStatus === "Oficina" || newStatus === "Faturado") {
+      newStatus = "Aprovado";
+    }
+    await pool.query(
+      "UPDATE orcamentos SET elevador_id = NULL, status = ? WHERE id = ?",
+      [newStatus, orcamentoId]
+    );
+    return res.json({ message: "OK" });
+  }
+
+  const novoElevadorId = Number(elevador_id);
+  if (!novoElevadorId || Number.isNaN(novoElevadorId)) {
+    return res.status(400).json({ message: "elevador_id inválido" });
+  }
+
+  const [elevRows] = await pool.query(
+    "SELECT id, empresa_id FROM elevadores WHERE id = ?",
+    [novoElevadorId]
+  );
+  if (elevRows.length === 0) {
+    return res.status(404).json({ message: "Elevador não encontrado" });
+  }
+  const elev = elevRows[0];
+
+  if (
+    orc.empresa_id != null &&
+    elev.empresa_id != null &&
+    Number(orc.empresa_id) !== Number(elev.empresa_id)
+  ) {
+    return res.status(400).json({ message: "Elevador pertence a outra empresa" });
+  }
+
+  await pool.query(
+    "UPDATE orcamentos SET elevador_id = ?, status = 'Oficina' WHERE id = ?",
+    [novoElevadorId, orcamentoId]
+  );
+
+  return res.json({ message: "OK" });
+}
+
+async function updatePatioChecklist(req, res) {
+  const pool = getPool();
+  const orcamentoId = Number(req.params.orcamentoId);
+  if (!orcamentoId || Number.isNaN(orcamentoId)) {
+    return res.status(400).json({ message: "orcamentoId inválido" });
+  }
+
+  const { item_id, concluido } = req.body || {};
+  const itemId = Number(item_id);
+  if (!itemId || Number.isNaN(itemId)) {
+    return res.status(400).json({ message: "item_id inválido" });
+  }
+
+  const [orcRows] = await pool.query(
+    "SELECT json_itens_servico FROM orcamentos WHERE id = ?",
+    [orcamentoId]
+  );
+  if (orcRows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const servicos = toServicosFromJson(orcRows[0].json_itens_servico);
+  if (!Array.isArray(servicos) || servicos.length === 0) {
+    return res.status(404).json({ message: "Checklist não encontrado para este orçamento" });
+  }
+
+  let found = false;
+  for (const servico of servicos) {
+    if (!Array.isArray(servico.itens)) continue;
+    for (const it of servico.itens) {
+      if (Number(it.item_id) === itemId) {
+        it.concluido = !!concluido;
+        found = true;
+        break;
+      }
+    }
+    if (found) break;
+  }
+
+  if (!found) {
+    return res.status(404).json({ message: "Item de checklist não encontrado" });
+  }
+
+  await pool.query(
+    "UPDATE orcamentos SET json_itens_servico = ? WHERE id = ?",
+    [JSON.stringify(servicos), orcamentoId]
+  );
+
+  return res.json({ message: "OK" });
 }
 
 async function listOS(req, res) {
