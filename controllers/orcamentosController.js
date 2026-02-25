@@ -164,6 +164,15 @@ async function clienteExists(clienteId) {
   return rows.length > 0;
 }
 
+async function veiculoExists(veiculoId) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    "SELECT id FROM veiculos WHERE id = ? LIMIT 1",
+    [Number(veiculoId)]
+  );
+  return rows.length > 0;
+}
+
 async function list(req, res) {
   const role = String(req.user?.role || "").toUpperCase();
   const roleId = req.user?.roleId;
@@ -460,6 +469,13 @@ async function create(req, res) {
     return res.status(400).json({ message: "cliente_id inválido" });
   }
 
+  if (req.body.veiculo_id != null && req.body.veiculo_id !== "") {
+    const veiculoOk = await veiculoExists(req.body.veiculo_id);
+    if (!veiculoOk) {
+      return res.status(400).json({ message: "veiculo_id inválido" });
+    }
+  }
+
   if (req.body.status && !STATUS_VALIDOS.includes(req.body.status)) {
     return res.status(400).json({ message: "status inválido" });
   }
@@ -525,6 +541,13 @@ async function update(req, res) {
   const isMaster = role === "MASTER" || roleId === 1;
   if (!isMaster) {
     delete dados.usuario_id;
+  }
+
+  if (dados.veiculo_id !== undefined && dados.veiculo_id !== null && dados.veiculo_id !== "") {
+    const veiculoOk = await veiculoExists(dados.veiculo_id);
+    if (!veiculoOk) {
+      return res.status(400).json({ message: "veiculo_id inválido" });
+    }
   }
 
   const { parsed: jsonItensParsed, error: jsonItensError } = normalizeJsonItens(
