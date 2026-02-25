@@ -2,18 +2,22 @@ import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
 
 const TABLE = "orcamentos";
-const TABLE_HISTORICO = "servico_item_valor_historico";
+// Novo histórico por SERVIÇO; tabela antiga servico_item_valor_historico permanece apenas para legado
+const TABLE_HISTORICO = "servico_valor_historico";
 
 function calcularTotais(jsonItens, jsonItensServico, desconto = 0) {
   const totalPecas = !jsonItens || !Array.isArray(jsonItens)
     ? 0
     : jsonItens.reduce((sum, item) => sum + (parseFloat(item?.total) || 0), 0);
+
   const totalServico = !jsonItensServico || !Array.isArray(jsonItensServico)
     ? 0
     : jsonItensServico.reduce((sum, item) => sum + (parseFloat(item?.valor_unitario) || 0), 0);
+
   const subtotal = totalPecas + totalServico;
   const descontoValue = parseFloat(desconto) || 0;
   const total = subtotal - descontoValue;
+
   return {
     total_pecas: parseFloat(totalPecas.toFixed(2)),
     total_servico: parseFloat(totalServico.toFixed(2)),
@@ -65,47 +69,74 @@ function normalizeJsonItens(jsonItens) {
   return { parsed: null, error: "json_itens deve ser array" };
 }
 
+function validateJsonItensServicoArray(arr) {
+  for (const item of arr) {
+    if (!item) continue;
+    const hasNested = Object.prototype.hasOwnProperty.call(item, "itens");
+    if (hasNested) {
+      // Novo formato: uma linha por serviço, itens como tags
+      if (item.servico_id === undefined || item.servico_nome === undefined || item.valor_unitario === undefined) {
+        return { parsed: null, error: "Cada serviço deve ter servico_id, servico_nome e valor_unitario" };
+      }
+      if (item.itens !== undefined && !Array.isArray(item.itens)) {
+        return { parsed: null, error: "itens em json_itens_servico deve ser array" };
+      }
+    } else {
+      // Formato antigo \"flat\": linha por subitem com valor_unitario próprio
+      if (item.servico_id === undefined || item.valor_unitario === undefined) {
+        return { parsed: null, error: "Cada item de serviço deve ter servico_id e valor_unitario" };
+      }
+    }
+  }
+  return { parsed: arr, error: null };
+}
+
 function normalizeJsonItensServico(jsonItensServico) {
   if (jsonItensServico === undefined || jsonItensServico === null || jsonItensServico === "") {
     return { parsed: [], error: null };
   }
+
   if (Array.isArray(jsonItensServico)) {
-    for (const item of jsonItensServico) {
-      if (item != null && (item.servico_id === undefined || item.item_id === undefined || item.valor_unitario === undefined)) {
-        return { parsed: null, error: "Cada item de serviço deve ter servico_id, item_id e valor_unitario" };
-      }
-    }
-    return { parsed: jsonItensServico, error: null };
+    return validateJsonItensServicoArray(jsonItensServico);
   }
+
   if (typeof jsonItensServico === "string") {
     try {
       const parsed = JSON.parse(jsonItensServico);
       if (!Array.isArray(parsed)) {
         return { parsed: null, error: "json_itens_servico deve ser array" };
       }
-      for (const item of parsed) {
-        if (item != null && (item.servico_id === undefined || item.item_id === undefined || item.valor_unitario === undefined)) {
-          return { parsed: null, error: "Cada item de serviço deve ter servico_id, item_id e valor_unitario" };
-        }
-      }
-      return { parsed, error: null };
+      return validateJsonItensServicoArray(parsed);
     } catch (error) {
       return { parsed: null, error: "json_itens_servico inválido" };
     }
   }
+
   return { parsed: null, error: "json_itens_servico deve ser array" };
 }
 
 async function gravarHistoricoValorServico(pool, orcamentoId, jsonItensServico, dataOrcamento) {
-  if (!jsonItensServico || !Array.isArray(jsonItensServico)) return;
-  const dataStr = dataOrcamento ? String(dataOrcamento).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  if (!jsonItensServico || !Array.isArray(jsonItensServico) || jsonItensServico.length === 0) return;
+
+  const dataStr = dataOrcamento
+    ? String(dataOrcamento).slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  // Agregar por servico_id (tanto para formato novo quanto flat)
+  const map = new Map(); // servico_id -> valor_total
+
   for (const item of jsonItensServico) {
-    const itemId = item?.item_id != null ? Number(item.item_id) : null;
-    const valor = item?.valor_unitario != null ? Number(item.valor_unitario) : null;
-    if (itemId == null || Number.isNaN(itemId) || valor == null || Number.isNaN(valor)) continue;
+    if (!item) continue;
+    const servicoId = item.servico_id != null ? Number(item.servico_id) : null;
+    const valor = item.valor_unitario != null ? Number(item.valor_unitario) : null;
+    if (servicoId == null || Number.isNaN(servicoId) || valor == null || Number.isNaN(valor)) continue;
+    map.set(servicoId, (map.get(servicoId) || 0) + valor);
+  }
+
+  for (const [servicoId, valorTotal] of map.entries()) {
     await pool.query(
-      `INSERT INTO ${TABLE_HISTORICO} (servico_item_id, orcamento_id, valor, data) VALUES (?, ?, ?, ?)`,
-      [itemId, orcamentoId, valor, dataStr]
+      `INSERT INTO ${TABLE_HISTORICO} (servico_id, orcamento_id, valor, data) VALUES (?, ?, ?, ?)`,
+      [servicoId, orcamentoId, valorTotal, dataStr]
     );
   }
 }
@@ -323,6 +354,7 @@ async function getById(req, res) {
 
   const hasHistorico = await tableExists(TABLE_HISTORICO);
   let jsonItensServico = item.json_itens_servico;
+
   if (jsonItensServico !== undefined && jsonItensServico !== null) {
     if (typeof jsonItensServico === "string") {
       try {
@@ -331,37 +363,89 @@ async function getById(req, res) {
         jsonItensServico = [];
       }
     }
-    if (Array.isArray(jsonItensServico) && hasHistorico && jsonItensServico.length > 0) {
-      const itemIds = [...new Set(jsonItensServico.map((i) => i?.item_id).filter((id) => id != null && !Number.isNaN(Number(id))))];
-      if (itemIds.length > 0) {
-        const placeholders = itemIds.map(() => "?").join(",");
-        const [histRows] = await pool.query(
-          `SELECT servico_item_id, valor, data FROM ${TABLE_HISTORICO}
-           WHERE servico_item_id IN (${placeholders})
-           ORDER BY data DESC, id DESC`,
-          itemIds
-        );
-        const historicoByItem = new Map();
-        for (const row of histRows) {
-          const sid = row.servico_item_id;
-          if (!historicoByItem.has(sid)) {
-            historicoByItem.set(sid, []);
-          }
-          historicoByItem.get(sid).push({
-            valor: Number(row.valor),
-            data: row.data ? (row.data instanceof Date ? row.data.toISOString().slice(0, 10) : String(row.data).slice(0, 10)) : null,
-          });
-        }
-        jsonItensServico = jsonItensServico.map((it) => ({
-          ...it,
-          historico_valor: historicoByItem.get(Number(it?.item_id)) || [],
-        }));
-      }
-    }
   } else {
     jsonItensServico = [];
   }
-  item.json_itens_servico = jsonItensServico;
+
+  // Compatibilidade: se o formato for \"flat\" (sem itens[]), agrupar por serviço
+  let jsonServicos = [];
+  if (Array.isArray(jsonItensServico) && jsonItensServico.length > 0) {
+    const isNovoFormato = jsonItensServico.some((s) => Array.isArray(s?.itens));
+    if (isNovoFormato) {
+      jsonServicos = jsonItensServico.map((s) => ({
+        servico_id: s.servico_id,
+        servico_nome: s.servico_nome,
+        valor_unitario: Number(s.valor_unitario || 0),
+        itens: Array.isArray(s.itens)
+          ? s.itens.map((it) => ({
+              item_id: it.item_id,
+              descricao: it.descricao,
+              concluido: !!it.concluido,
+            }))
+          : [],
+      }));
+    } else {
+      // Formato antigo: uma linha por subitem com valor_unitario
+      const mapServicos = new Map();
+      for (const it of jsonItensServico) {
+        if (!it) continue;
+        const servicoId = it.servico_id != null ? Number(it.servico_id) : null;
+        if (servicoId == null || Number.isNaN(servicoId)) continue;
+        const key = servicoId;
+        const atual = mapServicos.get(key) || {
+          servico_id: servicoId,
+          servico_nome: it.servico_nome,
+          valor_unitario: 0,
+          itens: [],
+        };
+        const valor = it.valor_unitario != null ? Number(it.valor_unitario) : 0;
+        atual.valor_unitario += valor;
+        if (it.item_id != null || it.descricao != null) {
+          atual.itens.push({
+            item_id: it.item_id,
+            descricao: it.descricao,
+            concluido: !!it.concluido,
+          });
+        }
+        mapServicos.set(key, atual);
+      }
+      jsonServicos = Array.from(mapServicos.values());
+    }
+  }
+
+  if (hasHistorico && jsonServicos.length > 0) {
+    const servicoIds = [...new Set(jsonServicos.map((s) => s.servico_id).filter((id) => id != null && !Number.isNaN(Number(id))))];
+    if (servicoIds.length > 0) {
+      const placeholders = servicoIds.map(() => "?").join(",");
+      const [histRows] = await pool.query(
+        `SELECT servico_id, valor, data FROM ${TABLE_HISTORICO}
+         WHERE servico_id IN (${placeholders})
+         ORDER BY data DESC, id DESC`,
+        servicoIds
+      );
+      const historicoByServico = new Map();
+      for (const row of histRows) {
+        const sid = row.servico_id;
+        if (!historicoByServico.has(sid)) {
+          historicoByServico.set(sid, []);
+        }
+        historicoByServico.get(sid).push({
+          valor: Number(row.valor),
+          data: row.data
+            ? (row.data instanceof Date
+                ? row.data.toISOString().slice(0, 10)
+                : String(row.data).slice(0, 10))
+            : null,
+        });
+      }
+      jsonServicos = jsonServicos.map((s) => ({
+        ...s,
+        historico_valor: historicoByServico.get(Number(s.servico_id)) || [],
+      }));
+    }
+  }
+
+  item.json_itens_servico = jsonServicos;
 
   res.json(item);
 }

@@ -100,7 +100,12 @@ export class MigrationService {
       {
         file: "018_orcamento_servicos_totais_historico.sql",
         tables: ["servico_item_valor_historico"],
-        name: "Orçamento Serviços / Totais / Histórico",
+        name: "Orçamento Serviços / Totais (legacy item histórico)",
+      },
+      {
+        file: "019_servico_valor_historico.sql",
+        tables: ["servico_valor_historico"],
+        name: "Histórico de valor por Serviço",
       },
     ];
 
