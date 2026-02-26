@@ -237,20 +237,22 @@ async function updatePatioChecklist(req, res) {
   }
 
   const { item_id, concluido } = req.body || {};
+   const concluidoBool = !!concluido;
   const itemId = Number(item_id);
   if (!itemId || Number.isNaN(itemId)) {
     return res.status(400).json({ message: "item_id inválido" });
   }
 
   const [orcRows] = await pool.query(
-    "SELECT json_itens_servico FROM orcamentos WHERE id = ?",
+    "SELECT status, elevador_id, json_itens_servico FROM orcamentos WHERE id = ?",
     [orcamentoId]
   );
   if (orcRows.length === 0) {
     return res.status(404).json({ message: "Orçamento não encontrado" });
   }
 
-  const servicos = toServicosFromJson(orcRows[0].json_itens_servico);
+  const orcamentoRow = orcRows[0];
+  const servicos = toServicosFromJson(orcamentoRow.json_itens_servico);
   if (!Array.isArray(servicos) || servicos.length === 0) {
     return res.status(404).json({ message: "Checklist não encontrado para este orçamento" });
   }
@@ -260,7 +262,7 @@ async function updatePatioChecklist(req, res) {
     if (!Array.isArray(servico.itens)) continue;
     for (const it of servico.itens) {
       if (Number(it.item_id) === itemId) {
-        it.concluido = !!concluido;
+        it.concluido = concluidoBool;
         found = true;
         break;
       }
@@ -276,6 +278,17 @@ async function updatePatioChecklist(req, res) {
     "UPDATE orcamentos SET json_itens_servico = ? WHERE id = ?",
     [JSON.stringify(servicos), orcamentoId]
   );
+
+  // Regra: se o orçamento está Faturado e algum item foi desmarcado (concluido=false),
+  // ele deve sair da coluna Finalizado e voltar para o elevador/fila.
+  if (!concluidoBool && orcamentoRow.status === "Faturado") {
+    const hasElevador = orcamentoRow.elevador_id != null;
+    const newStatus = hasElevador ? "Oficina" : "Aprovado";
+    await pool.query(
+      "UPDATE orcamentos SET status = ? WHERE id = ?",
+      [newStatus, orcamentoId]
+    );
+  }
 
   return res.json({ message: "OK" });
 }
