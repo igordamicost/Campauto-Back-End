@@ -860,4 +860,7 @@ export {
   updateChecklist,
   removeChecklist,
   concluirChecklist,
+  listPatio,
+  movePatio,
+  updatePatioChecklist,
 };
