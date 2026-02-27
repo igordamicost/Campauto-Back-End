@@ -167,6 +167,11 @@ export class MigrationService {
         tables: ["password_reset_tokens_applied"],
         name: "Tabela password_reset_tokens (esqueci senha / primeiro acesso)",
       },
+      {
+        file: "032_empresas_logo_url.sql",
+        tables: ["empresas_logo_url_applied"],
+        name: "Empresas - Logo por URL (substitui logo_base64)",
+      },
     ];
 
     let executed = 0;

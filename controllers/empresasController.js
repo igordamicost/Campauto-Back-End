@@ -5,15 +5,18 @@ const TABLE = "empresas";
 function normalizeLogoFromBody(body = {}) {
   const normalized = { ...body };
 
-  // Aceita tanto logo_base64 direto quanto logo: { base64: "..." }
-  if (body.logo && typeof body.logo === "object") {
-    const base64 = body.logo.base64 || body.logo.data || null;
-    if (base64) {
-      normalized.logo_base64 = base64;
+  // Aceita logo_url direto ou logo: { url: "..." }
+  if (body.logo !== undefined) {
+    if (body.logo && typeof body.logo === "object") {
+      const url = body.logo.url || null;
+      normalized.logo_url = url && typeof url === "string" ? url.trim() || null : null;
     } else if (body.logo === null) {
-      normalized.logo_base64 = null;
+      normalized.logo_url = null;
     }
     delete normalized.logo;
+  }
+  if (typeof body.logo_url === "string") {
+    normalized.logo_url = body.logo_url.trim() || null;
   }
 
   return normalized;
@@ -23,8 +26,8 @@ function attachLogoToResponseRow(row) {
   if (!row) return row;
   const cloned = { ...row };
 
-  if (cloned.logo_base64) {
-    cloned.logo = { base64: cloned.logo_base64 };
+  if (cloned.logo_url) {
+    cloned.logo = { url: cloned.logo_url };
   } else {
     cloned.logo = null;
   }

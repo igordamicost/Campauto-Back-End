@@ -59,7 +59,7 @@ export async function forgotPassword(req, res) {
         e.cidade,
         e.estado,
         e.telefone,
-        e.logo_base64
+        e.logo_url
       FROM users u
       LEFT JOIN empresas e ON e.id = u.empresa_id
       WHERE u.email = ?
@@ -101,6 +101,7 @@ export async function forgotPassword(req, res) {
 
     const empresaNome =
       user.nome_fantasia || user.razao_social || defaultCompanyName;
+    const companyLogo = user.logo_url && typeof user.logo_url === "string" ? user.logo_url.trim() : "";
     const userName = user.name || "";
 
     const template = await getTemplate(null, "RESET");
@@ -110,7 +111,7 @@ export async function forgotPassword(req, res) {
       action_url: link,
       token_expires_in: "1 hora",
       company_name: empresaNome,
-      company_logo: "",
+      company_logo: companyLogo,
     });
 
     console.log("[forgotPassword] Enviando e-mail de reset para", email.trim());

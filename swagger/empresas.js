@@ -120,9 +120,9 @@
  *                 type: object
  *                 nullable: true
  *                 properties:
- *                   base64:
+ *                   url:
  *                     type: string
- *                     description: Imagem do logo em base64 (somente conteúdo, sem prefixo data:image/png;base64,)
+ *                     description: URL pública do logo da empresa (ex. CDN, storage ou link direto da imagem)
  *     responses:
  *       201:
  *         description: Empresa criada

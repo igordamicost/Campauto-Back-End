@@ -158,14 +158,16 @@ async function preview(req, res) {
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
   const mock = buildMockData();
-  mock.company_logo = "";
 
   const pool = getPool();
   const [empresaRows] = await pool.query(
-    "SELECT nome_fantasia, razao_social FROM empresas LIMIT 1"
+    "SELECT nome_fantasia, razao_social, logo_url FROM empresas LIMIT 1"
   );
   if (empresaRows[0]) {
     mock.company_name = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || mock.company_name;
+    mock.company_logo = empresaRows[0].logo_url && typeof empresaRows[0].logo_url === "string"
+      ? empresaRows[0].logo_url.trim()
+      : "";
   }
   if (templateKey === "RESET") {
     mock.action_url = `${baseUrl}/recuperar-senha?token=TESTE`;
@@ -228,13 +230,16 @@ async function testTemplate(req, res) {
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
 
-  // Nome da empresa (logo removido para evitar e-mails muito grandes e problemas em clientes)
   let companyName = "JR Car Peças";
+  let companyLogo = "";
   const [empresaRows] = await pool.query(
-    "SELECT nome_fantasia, razao_social FROM empresas LIMIT 1"
+    "SELECT nome_fantasia, razao_social, logo_url FROM empresas LIMIT 1"
   );
   if (empresaRows[0]) {
     companyName = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || companyName;
+    if (empresaRows[0].logo_url && typeof empresaRows[0].logo_url === "string") {
+      companyLogo = empresaRows[0].logo_url.trim();
+    }
   }
 
   const actionUrl =
@@ -246,7 +251,7 @@ async function testTemplate(req, res) {
 
   const context = {
     company_name: companyName,
-    company_logo: "",
+    company_logo: companyLogo,
     user_name: user.name || "Usuário",
     user_email: user.email,
     action_url: actionUrl,

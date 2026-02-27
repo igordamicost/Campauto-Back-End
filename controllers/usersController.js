@@ -22,10 +22,7 @@ function buildEmpresaContextFromRow(row) {
   if (!row) return { companyName: null, companyLogo: null, empresa: null };
   const empresaNome =
     row.nome_fantasia || row.razao_social || process.env.COMPANY_NAME || "Campauto";
-  const logoBase64 = row.logo_base64 || null;
-  const companyLogo = logoBase64
-    ? `data:image/png;base64,${logoBase64}`
-    : null;
+  const companyLogo = row.logo_url && typeof row.logo_url === "string" ? row.logo_url.trim() : null;
 
   return {
     companyName: empresaNome,
@@ -315,7 +312,7 @@ async function createUser(req, res) {
           const [rowsEmpresa] = await pool.query(
             `
               SELECT e.id, e.nome_fantasia, e.razao_social, e.cnpj,
-                     e.endereco, e.cidade, e.estado, e.telefone, e.logo_base64
+                     e.endereco, e.cidade, e.estado, e.telefone, e.logo_url
               FROM users u
               LEFT JOIN empresas e ON e.id = u.empresa_id
               WHERE u.id = ?
