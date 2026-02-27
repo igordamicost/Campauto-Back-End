@@ -153,5 +153,5 @@
  *       404:
  *         description: Fornecedor não encontrado
  *       409:
- *         description: Não permitido (ex.: compras vinculadas)
+ *         description: "Não permitido (ex.: compras vinculadas)"
  */

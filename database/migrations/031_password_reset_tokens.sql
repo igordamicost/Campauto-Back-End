@@ -5,7 +5,7 @@ USE campauto;
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
+  user_id INT NOT NULL,
   token_hash CHAR(64) NOT NULL,
   expires_at DATETIME NOT NULL,
   used_at DATETIME NULL,

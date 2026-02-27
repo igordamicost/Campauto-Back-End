@@ -292,7 +292,7 @@
  *                 type: number
  *               tipo:
  *                 type: string
- *                 description: "entrada_manual" ou "entrada_barras"
+ *                 description: "entrada_manual ou entrada_barras"
  *               observacao:
  *                 type: string
  *     responses:
