@@ -162,6 +162,11 @@ export class MigrationService {
         tables: ["users_empresa_applied"],
         name: "Usuários - vínculo com empresas (empresa_id)",
       },
+      {
+        file: "031_password_reset_tokens.sql",
+        tables: ["password_reset_tokens_applied"],
+        name: "Tabela password_reset_tokens (esqueci senha / primeiro acesso)",
+      },
     ];
 
     let executed = 0;
