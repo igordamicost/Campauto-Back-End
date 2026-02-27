@@ -152,6 +152,11 @@ export class MigrationService {
         tables: ["email_templates_global_fix3_applied"],
         name: "Email templates globais - correção final (remover owner_master_user_id)",
       },
+      {
+        file: "029_empresas_logo.sql",
+        tables: ["empresas_logo_applied"],
+        name: "Empresas - Logo em base64",
+      },
     ];
 
     let executed = 0;

@@ -113,6 +113,16 @@
  *                 type: string
  *               estado:
  *                 type: string
+ *               loja:
+ *                 type: boolean
+ *                 description: Indica se a empresa é loja (local de estoque)
+ *               logo:
+ *                 type: object
+ *                 nullable: true
+ *                 properties:
+ *                   base64:
+ *                     type: string
+ *                     description: Imagem do logo em base64 (somente conteúdo, sem prefixo data:image/png;base64,)
  *     responses:
  *       201:
  *         description: Empresa criada
