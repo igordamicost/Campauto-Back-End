@@ -105,8 +105,14 @@ export async function forgotPassword(req, res) {
       company_logo: companyLogo,
     });
 
+    console.log("[forgotPassword] Enviando e-mail de reset para", email.trim());
     await sendEmail(email.trim(), subject, html);
+    console.log("[forgotPassword] E-mail de reset enviado (sem erro aparente)");
   } catch (err) {
+    console.error(
+      "[forgotPassword] Erro ao enviar e-mail de recuperação:",
+      err?.message || err
+    );
   }
 
   return res.status(200).json(genericMessage);
