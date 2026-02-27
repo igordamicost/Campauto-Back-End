@@ -31,11 +31,10 @@ const previewSchema = z.object({
 
 function buildMockData() {
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
-  const logoPath = "/LOGO_JR-CAR-OFICIAL (3).png";
 
   return {
     company_name: "JR Car Peças",
-    company_logo: `${baseUrl}${logoPath}`,
+    company_logo: "",
     user_name: "João da Silva",
     user_email: "joao.silva@exemplo.com",
     action_url: `${baseUrl}/acao-de-exemplo?token=abc123`,
@@ -159,15 +158,14 @@ async function preview(req, res) {
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
   const mock = buildMockData();
+  mock.company_logo = "";
 
-  // Enriquecer mock com logo da primeira empresa (data URL) e action_url correto para preview
   const pool = getPool();
   const [empresaRows] = await pool.query(
-    "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
+    "SELECT nome_fantasia, razao_social FROM empresas LIMIT 1"
   );
   if (empresaRows[0]) {
     mock.company_name = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || mock.company_name;
-    mock.company_logo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
   }
   if (templateKey === "RESET") {
     mock.action_url = `${baseUrl}/recuperar-senha?token=TESTE`;
@@ -230,18 +228,15 @@ async function testTemplate(req, res) {
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
 
-  // Logo: usar primeira empresa com logo em base64 (data URL) para exibir no e-mail de teste
+  // Nome da empresa (logo removido para evitar e-mails muito grandes e problemas em clientes)
   let companyName = "JR Car Peças";
-  let companyLogo = "";
   const [empresaRows] = await pool.query(
-    "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
+    "SELECT nome_fantasia, razao_social FROM empresas LIMIT 1"
   );
   if (empresaRows[0]) {
     companyName = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || companyName;
-    companyLogo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
   }
 
-  // Link de exemplo conforme o template (recuperar vs definir senha)
   const actionUrl =
     templateKey === "RESET"
       ? `${baseUrl}/recuperar-senha?token=TESTE-NAO-CLIQUE`
@@ -251,7 +246,7 @@ async function testTemplate(req, res) {
 
   const context = {
     company_name: companyName,
-    company_logo: companyLogo,
+    company_logo: "",
     user_name: user.name || "Usuário",
     user_email: user.email,
     action_url: actionUrl,

@@ -99,24 +99,8 @@ export async function forgotPassword(req, res) {
       });
     }
 
-    let empresaNome =
+    const empresaNome =
       user.nome_fantasia || user.razao_social || defaultCompanyName;
-    let logoBase64 = user.logo_base64 || null;
-    let companyLogo = logoBase64
-      ? `data:image/png;base64,${logoBase64}`
-      : null;
-
-    // Se usuário não tem empresa com logo (ex.: MASTER), usa a primeira empresa com logo para o e-mail
-    if (!companyLogo) {
-      const [empresaRows] = await db.query(
-        "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
-      );
-      if (empresaRows[0]) {
-        empresaNome = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || defaultCompanyName;
-        companyLogo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
-      }
-    }
-
     const userName = user.name || "";
 
     const template = await getTemplate(null, "RESET");
@@ -126,7 +110,7 @@ export async function forgotPassword(req, res) {
       action_url: link,
       token_expires_in: "1 hora",
       company_name: empresaNome,
-      company_logo: companyLogo,
+      company_logo: "",
     });
 
     console.log("[forgotPassword] Enviando e-mail de reset para", email.trim());
