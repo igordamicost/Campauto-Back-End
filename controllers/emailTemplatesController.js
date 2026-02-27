@@ -157,7 +157,24 @@ async function preview(req, res) {
   const { subject, htmlBody } = parsed.data;
   const safeHtml = stripScript(htmlBody);
 
+  const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
   const mock = buildMockData();
+
+  // Enriquecer mock com logo da primeira empresa (data URL) e action_url correto para preview
+  const pool = getPool();
+  const [empresaRows] = await pool.query(
+    "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
+  );
+  if (empresaRows[0]) {
+    mock.company_name = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || mock.company_name;
+    mock.company_logo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
+  }
+  if (templateKey === "RESET") {
+    mock.action_url = `${baseUrl}/recuperar-senha?token=TESTE`;
+  } else if (templateKey === "FIRST_ACCESS") {
+    mock.action_url = `${baseUrl}/definir-senha?token=TESTE`;
+  }
+
   const renderedSubject = renderTemplate(subject, mock);
   const renderedHtml = renderTemplate(safeHtml, mock);
 
@@ -212,15 +229,33 @@ async function testTemplate(req, res) {
   }
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
-  const logoPath = "/LOGO_JR-CAR-OFICIAL (3).png";
+
+  // Logo: usar primeira empresa com logo em base64 (data URL) para exibir no e-mail de teste
+  let companyName = "JR Car Peças";
+  let companyLogo = "";
+  const [empresaRows] = await pool.query(
+    "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
+  );
+  if (empresaRows[0]) {
+    companyName = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || companyName;
+    companyLogo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
+  }
+
+  // Link de exemplo conforme o template (recuperar vs definir senha)
+  const actionUrl =
+    templateKey === "RESET"
+      ? `${baseUrl}/recuperar-senha?token=TESTE-NAO-CLIQUE`
+      : templateKey === "FIRST_ACCESS"
+        ? `${baseUrl}/definir-senha?token=TESTE-NAO-CLIQUE`
+        : `${baseUrl}/acao-de-exemplo?token=teste`;
 
   const context = {
-    company_name: "JR Car Peças",
-    company_logo: `${baseUrl}${logoPath}`,
+    company_name: companyName,
+    company_logo: companyLogo,
     user_name: user.name || "Usuário",
     user_email: user.email,
-    action_url: `${baseUrl}/acao-de-exemplo?token=teste`,
-    token_expires_in: "24 horas",
+    action_url: actionUrl,
+    token_expires_in: "1 hora",
     order_number: "PED-TESTE-123",
     order_date: "01/03/2026",
     supplier_name: "Fornecedor Teste",

@@ -80,6 +80,9 @@ export async function forgotPassword(req, res) {
   try {
     const token = await createPasswordToken(user.id, "RESET");
     const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
+    if (process.env.NODE_ENV === "production" && !process.env.FRONT_URL) {
+      console.warn("[forgotPassword] FRONT_URL não definido em produção; link de reset pode apontar para localhost.");
+    }
     const link = `${baseUrl}/recuperar-senha?token=${token}`;
     const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
 
@@ -96,12 +99,23 @@ export async function forgotPassword(req, res) {
       });
     }
 
-    const empresaNome =
+    let empresaNome =
       user.nome_fantasia || user.razao_social || defaultCompanyName;
-    const logoBase64 = user.logo_base64 || null;
-    const companyLogo = logoBase64
+    let logoBase64 = user.logo_base64 || null;
+    let companyLogo = logoBase64
       ? `data:image/png;base64,${logoBase64}`
       : null;
+
+    // Se usuário não tem empresa com logo (ex.: MASTER), usa a primeira empresa com logo para o e-mail
+    if (!companyLogo) {
+      const [empresaRows] = await db.query(
+        "SELECT nome_fantasia, razao_social, logo_base64 FROM empresas WHERE logo_base64 IS NOT NULL AND TRIM(logo_base64) != '' LIMIT 1"
+      );
+      if (empresaRows[0]) {
+        empresaNome = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || defaultCompanyName;
+        companyLogo = `data:image/png;base64,${empresaRows[0].logo_base64}`;
+      }
+    }
 
     const userName = user.name || "";
 
