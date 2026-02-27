@@ -3,12 +3,14 @@ import { encrypt } from "../src/services/cryptoService.js";
 import { sendEmail, updateIntegrationTestResult } from "../src/services/gmailService.js";
 import { getPool } from "../db.js";
 
-const configSchema = z.object({
-  senderEmail: z.string().email(),
-  clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
-  refreshToken: z.string().min(1),
-});
+const configSchema = z
+  .object({
+    senderEmail: z.string().email(),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+    refreshToken: z.string().min(1),
+  })
+  .strict();
 
 async function configGoogleMail(req, res) {
   const parsed = configSchema.safeParse(req.body);
@@ -95,12 +97,14 @@ async function testGoogleMail(req, res) {
   return res.status(500).json({ message: result.error || "Falha ao enviar e-mail" });
 }
 
-const exchangeCodeSchema = z.object({
-  code: z.string().min(1),
-  redirectUri: z.string().url(),
-  clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
-});
+const exchangeCodeSchema = z
+  .object({
+    code: z.string().min(1),
+    redirectUri: z.string().url(),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+  })
+  .strict();
 
 /**
  * Troca o code OAuth do Google por refresh_token.

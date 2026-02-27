@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
 import { createPasswordToken } from "../src/services/passwordTokenService.js";
-import { sendEmail } from "../src/services/gmailService.js";
+import { sendEmail } from "../src/services/email.service.js";
 import { getTemplate, renderWithData } from "../src/services/templateService.js";
 
 async function list(req, res) {
@@ -240,19 +240,11 @@ async function createUser(req, res) {
         company_name: companyName,
       });
 
-      const masterUserId = req.user?.userId;
-      const result = await sendEmail(masterUserId, email, subject, html);
-
-      if (!result.success) {
-        return res.status(201).json({
-          id: userId,
-          message: "Usuário criado, mas não foi possível enviar o e-mail. " + (result.error || "Verifique a integração Gmail."),
-        });
-      }
+      await sendEmail(email, subject, html);
     } catch (err) {
       return res.status(201).json({
         id: userId,
-        message: "Usuário criado, mas falha ao enviar e-mail de boas-vindas. Verifique a integração Gmail.",
+        message: "Usuário criado, mas falha ao enviar e-mail de boas-vindas.",
       });
     }
   }

@@ -1,18 +1,16 @@
 import nodemailer from "nodemailer";
 import { toASCII } from "node:punycode";
 import "./env.js";
-
-function sanitizeEnvValue(value = "") {
-  return String(value).trim().replace(/^(['"])(.*)\1$/, "$2");
-}
-
-const smtpHost = sanitizeEnvValue(process.env.SMTP_HOST || "smtp.hostinger.com");
-const smtpUser = sanitizeEnvValue(process.env.SMTP_USER);
-const smtpPass = sanitizeEnvValue(process.env.SMTP_PASS);
-const configuredPort = Number.parseInt(sanitizeEnvValue(process.env.SMTP_PORT || ""), 10);
+import {
+  HOSTINGER_SMTP_HOST,
+  HOSTINGER_SMTP_PORT,
+  HOSTINGER_SMTP_SECURE,
+  SMTP_USER,
+  SMTP_PASS,
+} from "./mail.js";
 
 function toSmtpAsciiUser(email) {
-  const [localPart, domain] = email.split("@");
+  const [localPart, domain] = (email || "").split("@");
   if (!localPart || !domain) {
     return email;
   }
@@ -20,46 +18,34 @@ function toSmtpAsciiUser(email) {
   return `${localPart}@${toASCII(domain)}`;
 }
 
-const smtpUserASCII = toSmtpAsciiUser(smtpUser);
+const smtpUserASCII = toSmtpAsciiUser(SMTP_USER || "");
 
-function createTransporter({ port, secure }) {
+function createTransporter() {
   return nodemailer.createTransport({
-    host: smtpHost,
-    port,
-    secure,
+    host: HOSTINGER_SMTP_HOST,
+    port: HOSTINGER_SMTP_PORT,
+    secure: HOSTINGER_SMTP_SECURE,
     auth: {
       user: smtpUserASCII,
-      pass: smtpPass
+      pass: SMTP_PASS,
     },
     tls: { rejectUnauthorized: false },
     debug: true,
-    logger: true
+    logger: true,
   });
 }
 
-const candidatePorts = [configuredPort, 465, 587]
-  .filter((port) => Number.isInteger(port) && port > 0)
-  .filter((port, index, list) => list.indexOf(port) === index);
-
-export let transporter = createTransporter({
-  port: candidatePorts[0] ?? 465,
-  secure: (candidatePorts[0] ?? 465) === 465
-});
+export let transporter = createTransporter();
 
 export async function verifyEmailConnection() {
-  for (const port of candidatePorts.length ? candidatePorts : [465, 587]) {
-    const secure = port === 465;
-    transporter = createTransporter({ port, secure });
-
-    try {
-      await transporter.verify();
-      console.log(`SMTP pronto em ${smtpHost}:${port}`);
-      return;
-    } catch (error) {
-      const detail = error?.message || String(error);
-      console.warn(`Falha ao validar SMTP em ${smtpHost}:${port}: ${detail}`);
-    }
+  try {
+    await transporter.verify();
+    console.log(`SMTP pronto em ${HOSTINGER_SMTP_HOST}:${HOSTINGER_SMTP_PORT}`);
+  } catch (error) {
+    const detail = error?.message || String(error);
+    console.warn(
+      `Falha ao validar SMTP em ${HOSTINGER_SMTP_HOST}:${HOSTINGER_SMTP_PORT}: ${detail}`
+    );
+    console.warn("SMTP indisponível, aplicação continuará sem e-mail");
   }
-
-  console.warn("SMTP indisponível, aplicação continuará sem e-mail");
 }

@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { db } from "../config/database.js";
 import { createPasswordToken, consumeToken } from "../services/passwordTokenService.js";
-import { sendEmail } from "../services/gmailService.js";
+import { sendEmail } from "../services/email.service.js";
 import { getTemplate, renderWithData } from "../services/templateService.js";
 
 const PASSWORD_SCHEMA = {
@@ -58,9 +58,7 @@ export async function forgotPassword(req, res) {
       company_name: companyName,
     });
 
-    const result = await sendEmail(null, email.trim(), subject, html);
-    if (!result.success) {
-    }
+    await sendEmail(email.trim(), subject, html);
   } catch (err) {
   }
 
