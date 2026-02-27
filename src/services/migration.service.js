@@ -142,6 +142,11 @@ export class MigrationService {
         tables: ["email_client_quote_logs", "email_supplier_order_logs"],
         name: "Logs de envio de e-mails (clientes e fornecedores)",
       },
+      {
+        file: "027_email_templates_global_fix2.sql",
+        tables: ["email_templates_global_fix2_applied"],
+        name: "Email templates globais - correção extra (remover owner_master_user_id)",
+      },
     ];
 
     let executed = 0;
