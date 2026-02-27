@@ -13,5 +13,6 @@ router.use(masterOnly);
 router.get("/", asyncHandler(controller.list));
 router.put("/:templateKey", asyncHandler(controller.update));
 router.post("/:templateKey/preview", asyncHandler(controller.preview));
+router.post("/:templateKey/test", asyncHandler(controller.testTemplate));
 
 export default router;
