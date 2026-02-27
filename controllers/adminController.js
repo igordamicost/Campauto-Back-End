@@ -51,7 +51,7 @@ async function listUsers(req, res) {
     try {
       if (hasRolesTable) {
         // Fazer JOIN com roles se a tabela existir
-        const query = `SELECT u.id, u.name, u.email, u.role_id, u.blocked, u.created_at,
+        const query = `SELECT u.id, u.name, u.email, u.role_id, u.empresa_id, u.blocked, u.created_at,
                               r.name AS role_name, r.description AS role_description
                        FROM users u
                        LEFT JOIN roles r ON u.role_id = r.id
@@ -62,7 +62,7 @@ async function listUsers(req, res) {
         [rows] = await db.query(query, [...params, parseInt(limit), parseInt(offset)]);
       } else {
         // Se não existir, usar apenas a coluna role (sistema antigo)
-        const query = `SELECT u.id, u.name, u.email, u.blocked, u.created_at,
+        const query = `SELECT u.id, u.name, u.email, u.empresa_id, u.blocked, u.created_at,
                               u.role AS role_name,
                               NULL AS role_description,
                               NULL AS role_id
@@ -77,7 +77,7 @@ async function listUsers(req, res) {
       // Se der erro (ex: coluna role_id não existe), tentar query mais simples
       if (queryError.code === "ER_BAD_FIELD_ERROR" || queryError.message.includes("role_id")) {
         console.warn("Coluna role_id não encontrada, usando query simplificada:", queryError.message);
-        const query = `SELECT u.id, u.name, u.email, u.blocked, u.created_at,
+        const query = `SELECT u.id, u.name, u.email, u.empresa_id, u.blocked, u.created_at,
                               u.role AS role_name,
                               NULL AS role_description,
                               NULL AS role_id
@@ -126,7 +126,7 @@ async function getUserById(req, res) {
     const { id } = req.params;
 
     const [rows] = await db.query(
-      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.blocked, u.created_at,
+      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.empresa_id, u.blocked, u.created_at,
               r.name AS role_name, r.description AS role_description
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
@@ -157,7 +157,7 @@ async function getUserById(req, res) {
  */
 async function createUser(req, res) {
   try {
-    const { name, email, password, role_id, cpf, telefone } = req.body;
+    const { name, email, password, role_id, empresa_id, cpf, telefone } = req.body;
 
     if (!name || !email || !password || !role_id) {
       return res.status(400).json({
@@ -180,14 +180,14 @@ async function createUser(req, res) {
 
     // Criar usuário
     const [result] = await db.query(
-      `INSERT INTO users (name, email, password, role_id, cpf, telefone)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, email, passwordHash, role_id, cpf || null, telefone || null]
+      `INSERT INTO users (name, email, password, role_id, empresa_id, cpf, telefone)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, email, passwordHash, role_id, empresa_id != null ? Number(empresa_id) : null, cpf || null, telefone || null]
     );
 
     // Buscar usuário criado
     const [newUserRows] = await db.query(
-      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.blocked, u.created_at,
+      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.empresa_id, u.blocked, u.created_at,
               r.name AS role_name, r.description AS role_description
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
@@ -215,7 +215,7 @@ async function createUser(req, res) {
 async function updateUser(req, res) {
   try {
     const { id } = req.params;
-    const { name, email, password, role_id, cpf, telefone, blocked } = req.body;
+    const { name, email, password, role_id, empresa_id, cpf, telefone, blocked } = req.body;
 
     const updates = [];
     const params = [];
@@ -251,6 +251,11 @@ async function updateUser(req, res) {
       params.push(role_id);
     }
 
+    if (empresa_id !== undefined) {
+      updates.push("empresa_id = ?");
+      params.push(empresa_id != null && empresa_id !== "" ? Number(empresa_id) : null);
+    }
+
     if (cpf !== undefined) {
       updates.push("cpf = ?");
       params.push(cpf);
@@ -279,7 +284,7 @@ async function updateUser(req, res) {
 
     // Buscar usuário atualizado
     const [updatedRows] = await db.query(
-      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.blocked, u.created_at,
+      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.empresa_id, u.blocked, u.created_at,
               r.name AS role_name, r.description AS role_description
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id

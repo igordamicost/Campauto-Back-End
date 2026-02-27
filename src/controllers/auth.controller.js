@@ -79,7 +79,8 @@ export async function forgotPassword(req, res) {
 
   try {
     const token = await createPasswordToken(user.id, "RESET");
-    const link = `${process.env.FRONT_URL}/recuperar-senha?token=${token}`;
+    const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
+    const link = `${baseUrl}/recuperar-senha?token=${token}`;
     const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
 
     const roleStr = user.role;
