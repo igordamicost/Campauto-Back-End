@@ -38,7 +38,10 @@ export async function forgotPassword(req, res) {
   const genericMessage = { message: "Se o email existir, você receberá instruções em breve" };
 
   if (!email || typeof email !== "string") {
-    return res.status(200).json(genericMessage);
+    return res.status(200).json({
+      ...genericMessage,
+      debug: "INVALID_EMAIL",
+    });
   }
 
   const [rows] = await db.query(
@@ -66,7 +69,10 @@ export async function forgotPassword(req, res) {
   );
 
   if (rows.length === 0) {
-    return res.status(200).json(genericMessage);
+    return res.status(200).json({
+      ...genericMessage,
+      debug: "USER_NOT_FOUND",
+    });
   }
 
   const user = rows[0];
@@ -83,7 +89,10 @@ export async function forgotPassword(req, res) {
     // Regra: usuários não-master precisam ter empresa vinculada para enviar e-mail de reset
     if (!isMaster && !user.empresa_id) {
       // Não envia e-mail, mas mantém resposta genérica
-      return res.status(200).json(genericMessage);
+      return res.status(200).json({
+        ...genericMessage,
+        debug: "NON_MASTER_NO_EMPRESA",
+      });
     }
 
     const empresaNome =
@@ -113,9 +122,17 @@ export async function forgotPassword(req, res) {
       "[forgotPassword] Erro ao enviar e-mail de recuperação:",
       err?.message || err
     );
+    return res.status(200).json({
+      ...genericMessage,
+      debug: "EMAIL_SEND_ERROR",
+      error: err?.message || String(err),
+    });
   }
 
-  return res.status(200).json(genericMessage);
+  return res.status(200).json({
+    ...genericMessage,
+    debug: "EMAIL_SENT",
+  });
 }
 
 /**
