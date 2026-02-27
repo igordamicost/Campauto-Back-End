@@ -56,12 +56,9 @@ function stripScript(html) {
 }
 
 async function list(req, res) {
-  const masterUserId = req.user.userId;
-
   const pool = getPool();
   const [rows] = await pool.query(
-    "SELECT template_key, name, subject, html_body, is_active FROM email_templates WHERE owner_master_user_id = ?",
-    [masterUserId]
+    "SELECT template_key, name, subject, html_body, is_active FROM email_templates"
   );
 
   const byKey = Object.fromEntries(rows.map((r) => [r.template_key, r]));
@@ -92,7 +89,6 @@ async function list(req, res) {
 
 async function update(req, res) {
   const { templateKey } = req.params;
-  const masterUserId = req.user.userId;
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
     return res.status(400).json({
@@ -114,8 +110,8 @@ async function update(req, res) {
   const pool = getPool();
   await pool.query(
     `
-    INSERT INTO email_templates (owner_master_user_id, template_key, name, subject, html_body, is_active)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO email_templates (template_key, name, subject, html_body, is_active)
+    VALUES (?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       name = VALUES(name),
       subject = VALUES(subject),
@@ -123,12 +119,12 @@ async function update(req, res) {
       is_active = VALUES(is_active),
       updated_at = NOW()
   `,
-    [masterUserId, templateKey, name, subject, safeHtml, isActive ? 1 : 0]
+    [templateKey, name, subject, safeHtml, isActive ? 1 : 0]
   );
 
   const [rows] = await pool.query(
-    "SELECT template_key, name, subject, html_body, is_active FROM email_templates WHERE owner_master_user_id = ? AND template_key = ?",
-    [masterUserId, templateKey]
+    "SELECT template_key, name, subject, html_body, is_active FROM email_templates WHERE template_key = ?",
+    [templateKey]
   );
 
   const r = rows[0];
@@ -174,7 +170,6 @@ async function preview(req, res) {
 
 async function testTemplate(req, res) {
   const { templateKey } = req.params;
-  const masterUserId = req.user.userId;
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
     return res.status(400).json({
@@ -188,7 +183,7 @@ async function testTemplate(req, res) {
   // Buscar dados reais do usuário autenticado
   const [userRows] = await pool.query(
     "SELECT name, email FROM users WHERE id = ?",
-    [masterUserId]
+    [req.user.userId]
   );
   const user = userRows[0];
   if (!user || !user.email) {
@@ -199,8 +194,8 @@ async function testTemplate(req, res) {
 
   // Buscar template do banco
   const [tplRows] = await pool.query(
-    "SELECT subject, html_body, is_active FROM email_templates WHERE owner_master_user_id = ? AND template_key = ?",
-    [masterUserId, templateKey]
+    "SELECT subject, html_body, is_active FROM email_templates WHERE template_key = ?",
+    [templateKey]
   );
   const tpl = tplRows[0];
 

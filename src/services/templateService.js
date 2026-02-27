@@ -16,36 +16,24 @@ const DEFAULTS = {
 };
 
 /**
- * Obtém owner_master_user_id da primeira integração ACTIVE (para RESET sem master em contexto).
- */
-async function getFirstIntegrationOwnerId() {
-  const pool = getPool();
-  const [rows] = await pool.query(
-    "SELECT owner_master_user_id FROM google_mail_integrations WHERE status = 'ACTIVE' LIMIT 1"
-  );
-  return rows[0]?.owner_master_user_id ?? null;
-}
-
-/**
- * Busca template do banco. Se não existir ou inativo, retorna default.
+ * Busca template global do banco. Se não existir ou inativo, retorna default.
+ * masterUserIdOrNull é ignorado para lookup (templates são globais).
  */
 export async function getTemplate(masterUserIdOrNull, templateKey) {
   if (!TEMPLATE_KEYS.includes(templateKey)) return DEFAULTS[templateKey] ?? null;
 
-  let ownerId = masterUserIdOrNull;
-  if (!ownerId) {
-    ownerId = await getFirstIntegrationOwnerId();
-  }
+  const pool = getPool();
+  const [rows] = await pool.query(
+    "SELECT name, subject, html_body FROM email_templates WHERE template_key = ? AND is_active = 1",
+    [templateKey]
+  );
 
-  if (ownerId) {
-    const pool = getPool();
-    const [rows] = await pool.query(
-      "SELECT name, subject, html_body FROM email_templates WHERE owner_master_user_id = ? AND template_key = ? AND is_active = 1",
-      [ownerId, templateKey]
-    );
-    if (rows[0]) {
-      return { name: rows[0].name, subject: rows[0].subject, html_body: rows[0].html_body };
-    }
+  if (rows[0]) {
+    return {
+      name: rows[0].name,
+      subject: rows[0].subject,
+      html_body: rows[0].html_body,
+    };
   }
 
   return DEFAULTS[templateKey];

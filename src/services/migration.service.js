@@ -127,6 +127,11 @@ export class MigrationService {
         tables: ["empresas_loja_applied"],
         name: "Empresas - Campo loja (boolean)",
       },
+      {
+        file: "024_email_templates_global.sql",
+        tables: ["email_templates_global_applied"],
+        name: "Email templates globais (sem owner_master_user_id)",
+      },
     ];
 
     let executed = 0;
