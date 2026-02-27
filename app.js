@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./swagger.js";
+import client from "prom-client";
 
 import clientesRoutes from "./routes/clientes.js";
 import produtosRoutes from "./routes/produtos.js";
@@ -33,6 +34,37 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+
+// ===================== MÉTRICAS PROMETHEUS =====================
+
+// Coletar métricas padrão (CPU, memória, etc)
+client.collectDefaultMetrics();
+
+// Histograma de duração das requisições HTTP
+const httpRequestDurationSeconds = new client.Histogram({
+  name: "http_request_duration_seconds",
+  help: "Duração das requisições HTTP em segundos",
+  labelNames: ["method", "route", "status_code"],
+  buckets: [0.05, 0.1, 0.3, 0.5, 1, 2, 5],
+});
+
+// Middleware para medir todas as requisições
+app.use((req, res, next) => {
+  const end = httpRequestDurationSeconds.startTimer();
+  res.on("finish", () => {
+    const route = req.route?.path || req.path || "unknown_route";
+    end({ method: req.method, route, status_code: res.statusCode });
+  });
+  next();
+});
+
+// Endpoint de métricas para o Prometheus
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
+
+// ===================== ROTAS DA APLICAÇÃO =====================
 
 app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
