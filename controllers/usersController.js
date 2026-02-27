@@ -4,6 +4,45 @@ import { createPasswordToken } from "../src/services/passwordTokenService.js";
 import { sendEmail } from "../src/services/email.service.js";
 import { getTemplate, renderWithData } from "../src/services/templateService.js";
 
+function isMasterRole(roleString, roleId) {
+  const role = String(roleString || "").toUpperCase();
+  return role === "MASTER" || roleId === 1;
+}
+
+async function ensureEmpresaExists(connectionOrPool, empresaId) {
+  if (empresaId == null) return false;
+  const [rows] = await connectionOrPool.query(
+    "SELECT id FROM empresas WHERE id = ? LIMIT 1",
+    [Number(empresaId)]
+  );
+  return rows.length > 0;
+}
+
+function buildEmpresaContextFromRow(row) {
+  if (!row) return { companyName: null, companyLogo: null, empresa: null };
+  const empresaNome =
+    row.nome_fantasia || row.razao_social || process.env.COMPANY_NAME || "Campauto";
+  const logoBase64 = row.logo_base64 || null;
+  const companyLogo = logoBase64
+    ? `data:image/png;base64,${logoBase64}`
+    : null;
+
+  return {
+    companyName: empresaNome,
+    companyLogo,
+    empresa: {
+      id: row.id,
+      nome_fantasia: row.nome_fantasia,
+      razao_social: row.razao_social,
+      cnpj: row.cnpj,
+      endereco: row.endereco,
+      cidade: row.cidade,
+      estado: row.estado,
+      telefone: row.telefone,
+    },
+  };
+}
+
 async function list(req, res) {
   const pool = getPool();
   const limit = Number(req.query.limit || req.query.perPage || 10);
@@ -81,7 +120,7 @@ async function getById(req, res) {
 }
 
 async function createUser(req, res) {
-  const { name, email, password, role, employee = {} } = req.body || {};
+  const { name, email, password, role, employee = {}, empresa_id } = req.body || {};
   const { full_name, phone } = employee;
 
   // Validações obrigatórias
@@ -157,27 +196,62 @@ async function createUser(req, res) {
       }
     }
 
-    // Inserir usuário com role_id (sempre tentar inserir role_id)
+    // Validar empresa_id de acordo com a role
+    const isMaster = isMasterRole(roleString, null);
+    let finalEmpresaId = null;
+
+    if (isMaster) {
+      if (empresa_id != null) {
+        const empresaOk = await ensureEmpresaExists(connection, empresa_id);
+        if (!empresaOk) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({ message: "empresa_id inválido" });
+        }
+        finalEmpresaId = Number(empresa_id);
+      }
+    } else {
+      if (empresa_id == null) {
+        await connection.rollback();
+        connection.release();
+        return res
+          .status(400)
+          .json({ message: "empresa_id é obrigatório para este perfil de usuário" });
+      }
+      const empresaOk = await ensureEmpresaExists(connection, empresa_id);
+      if (!empresaOk) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ message: "empresa_id inválido" });
+      }
+      finalEmpresaId = Number(empresa_id);
+    }
+
+    // Inserir usuário com role_id e empresa_id (sempre tentar inserir ambos)
     try {
       // Tentar inserir com role_id primeiro
       const [userResult] = await connection.query(
         `
-          INSERT INTO users (name, email, password, role, role_id, must_set_password)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO users (name, email, password, role, role_id, empresa_id, must_set_password)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
-        [name, email, hashedPassword, roleString, roleId, mustSetPassword]
+        [name, email, hashedPassword, roleString, roleId, finalEmpresaId, mustSetPassword]
       );
       userId = userResult.insertId;
     } catch (insertErr) {
-      // Se falhar (coluna role_id não existe), tentar sem role_id
-      if (insertErr.code === "ER_BAD_FIELD_ERROR" || insertErr.message.includes("role_id")) {
+      // Se falhar por conta de role_id (ambiente legado), tentar sem role_id
+      if (
+        insertErr.code === "ER_BAD_FIELD_ERROR" &&
+        insertErr.message &&
+        insertErr.message.includes("role_id")
+      ) {
         console.warn("Coluna role_id não existe, inserindo sem role_id:", insertErr.message);
         const [userResult] = await connection.query(
           `
-            INSERT INTO users (name, email, password, role, must_set_password)
-            VALUES (?, ?, ?, ?, ?)
+          INSERT INTO users (name, email, password, role, empresa_id, must_set_password)
+          VALUES (?, ?, ?, ?, ?, ?)
           `,
-          [name, email, hashedPassword, roleString, mustSetPassword]
+          [name, email, hashedPassword, roleString, finalEmpresaId, mustSetPassword]
         );
         userId = userResult.insertId;
         
@@ -229,7 +303,32 @@ async function createUser(req, res) {
     try {
       const token = await createPasswordToken(userId, "FIRST_ACCESS");
       const link = `${process.env.FRONT_URL}/definir-senha?token=${token}`;
-      const companyName = process.env.COMPANY_NAME || "Campauto";
+      const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
+
+      let empresaContext = {
+        companyName: defaultCompanyName,
+        companyLogo: null,
+      };
+
+      if (req.user?.userId) {
+        try {
+          const [rowsEmpresa] = await pool.query(
+            `
+              SELECT e.id, e.nome_fantasia, e.razao_social, e.cnpj,
+                     e.endereco, e.cidade, e.estado, e.telefone, e.logo_base64
+              FROM users u
+              LEFT JOIN empresas e ON e.id = u.empresa_id
+              WHERE u.id = ?
+            `,
+            [req.user.userId]
+          );
+          if (rowsEmpresa[0]) {
+            empresaContext = buildEmpresaContextFromRow(rowsEmpresa[0]);
+          }
+        } catch (ctxErr) {
+          console.warn("Falha ao carregar empresa do usuário para FIRST_ACCESS:", ctxErr.message);
+        }
+      }
 
       const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
       const { subject, html } = renderWithData(template, {
@@ -237,7 +336,8 @@ async function createUser(req, res) {
         user_email: email,
         action_url: link,
         token_expires_in: "1 hora",
-        company_name: companyName,
+        company_name: empresaContext.companyName,
+        company_logo: empresaContext.companyLogo,
       });
 
       await sendEmail(email, subject, html);
@@ -265,7 +365,7 @@ async function updateUser(req, res) {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'Invalid id' });
 
-  const { name, email, password, role, employee = {} } = req.body || {};
+  const { name, email, password, role, employee = {}, empresa_id } = req.body || {};
   const { full_name, phone } = employee;
 
   const pool = getPool();
@@ -273,7 +373,7 @@ async function updateUser(req, res) {
 
   try {
     const [rows] = await connection.query(
-      'SELECT id FROM users WHERE id = ?',
+      'SELECT id, role, role_id, empresa_id FROM users WHERE id = ?',
       [id]
     );
     if (!rows.length) {
@@ -318,6 +418,8 @@ async function updateUser(req, res) {
       userUpdates.push('must_set_password = ?');
       userParams.push(0); // Senha definida
     }
+    let targetRoleUpper = rows[0].role ? String(rows[0].role).toUpperCase() : "";
+
     if (role !== undefined) {
       // Mapear role string para role_id (se usando sistema RBAC)
       const [roleRows] = await connection.query(
@@ -330,6 +432,44 @@ async function updateUser(req, res) {
       }
       userUpdates.push('role = ?');
       userParams.push(role);
+      targetRoleUpper = String(role).toUpperCase();
+    }
+
+    // Validar/atualizar empresa_id de acordo com a role (atual ou nova)
+    if (empresa_id !== undefined) {
+      const currentRoleId = rows[0].role_id;
+      const isMaster = isMasterRole(targetRoleUpper, currentRoleId);
+
+      if (isMaster) {
+        // MASTER: empresa_id opcional (pode ser null)
+        if (empresa_id != null) {
+          const empresaOk = await ensureEmpresaExists(connection, empresa_id);
+          if (!empresaOk) {
+            await connection.rollback();
+            connection.release();
+            return res.status(400).json({ message: "empresa_id inválido" });
+          }
+        }
+        userUpdates.push('empresa_id = ?');
+        userParams.push(empresa_id != null ? Number(empresa_id) : null);
+      } else {
+        // Não-master: empresa_id obrigatório
+        if (empresa_id == null) {
+          await connection.rollback();
+          connection.release();
+          return res
+            .status(400)
+            .json({ message: "empresa_id é obrigatório para este perfil de usuário" });
+        }
+        const empresaOk = await ensureEmpresaExists(connection, empresa_id);
+        if (!empresaOk) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({ message: "empresa_id inválido" });
+        }
+        userUpdates.push('empresa_id = ?');
+        userParams.push(Number(empresa_id));
+      }
     }
 
     if (userUpdates.length) {
@@ -427,4 +567,48 @@ async function resetPasswordUser(req, res) {
   res.json({ message: "Password reset successfully" });
 }
 
-export { list, getById, createUser, updateUser, removeUser, blockUser, resetPasswordUser };
+async function listPendingCompanyLinks(req, res) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `
+      SELECT id, name, email, role, role_id, empresa_id, created_at
+      FROM users
+      WHERE (role IS NULL OR UPPER(role) <> 'MASTER')
+        AND (role_id IS NULL OR role_id <> 1)
+        AND (empresa_id IS NULL)
+      ORDER BY created_at DESC, id DESC
+    `
+  );
+
+  res.json({
+    total: rows.length,
+    data: rows,
+  });
+}
+
+async function getPendingCompanyCount(req, res) {
+  const pool = getPool();
+  const [[row]] = await pool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM users
+      WHERE (role IS NULL OR UPPER(role) <> 'MASTER')
+        AND (role_id IS NULL OR role_id <> 1)
+        AND (empresa_id IS NULL)
+    `
+  );
+
+  res.json({ total: Number(row.total || 0) });
+}
+
+export {
+  list,
+  getById,
+  createUser,
+  updateUser,
+  removeUser,
+  blockUser,
+  resetPasswordUser,
+  listPendingCompanyLinks,
+  getPendingCompanyCount,
+};

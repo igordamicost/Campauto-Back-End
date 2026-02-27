@@ -173,6 +173,15 @@ async function veiculoExists(veiculoId) {
   return rows.length > 0;
 }
 
+async function empresaExists(empresaId) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    "SELECT id FROM empresas WHERE id = ? LIMIT 1",
+    [Number(empresaId)]
+  );
+  return rows.length > 0;
+}
+
 async function list(req, res) {
   const role = String(req.user?.role || "").toUpperCase();
   const roleId = req.user?.roleId;
@@ -509,8 +518,40 @@ async function create(req, res) {
     });
   }
 
+  // Definir empresa emissora de acordo com a role e vínculo do usuário
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
+
+  let empresaId = null;
+
+  if (isMaster) {
+    if (req.body.empresa_id != null && req.body.empresa_id !== "") {
+      const empOk = await empresaExists(req.body.empresa_id);
+      if (!empOk) {
+        return res.status(400).json({ message: "empresa_id inválido" });
+      }
+      empresaId = Number(req.body.empresa_id);
+    } else {
+      empresaId = null; // master pode criar orçamento sem empresa vinculada, se necessário
+    }
+  } else {
+    const userEmpresaId = req.user?.empresaId ?? null;
+    if (!userEmpresaId) {
+      return res.status(400).json({
+        message: "Usuário precisa estar vinculado a uma empresa para criar orçamento",
+      });
+    }
+    const empOk = await empresaExists(userEmpresaId);
+    if (!empOk) {
+      return res.status(400).json({ message: "empresa do usuário inválida" });
+    }
+    empresaId = Number(userEmpresaId);
+  }
+
   const dados = {
     ...req.body,
+    empresa_id: empresaId,
     json_itens: jsonItensParsed ? JSON.stringify(jsonItensParsed) : null,
     json_itens_servico: jsonItensServicoParsed?.length
       ? JSON.stringify(jsonItensServicoParsed)

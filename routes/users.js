@@ -11,6 +11,16 @@ router.use(authMiddleware);
 
 router.get("/", asyncHandler(controller.list));
 router.post("/", masterOnly, asyncHandler(controller.createUser));
+router.get(
+  "/pending-company-links",
+  masterOnly,
+  asyncHandler(controller.listPendingCompanyLinks)
+);
+router.get(
+  "/pending-company-count",
+  masterOnly,
+  asyncHandler(controller.getPendingCompanyCount)
+);
 router.get("/:id", asyncHandler(controller.getById));
 router.patch("/:id/block", asyncHandler(controller.blockUser));
 router.post("/:id/reset-password", asyncHandler(controller.resetPasswordUser));

@@ -88,7 +88,14 @@
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [MASTER, USER]
+ *                 enum: [MASTER, ADMIN, USER, ALMOX, CONTAB]
+ *               empresa_id:
+ *                 type: integer
+ *                 nullable: true
+ *                 description: >
+ *                   ID da empresa vinculada ao usuário.
+ *                   Obrigatório para perfis não-MASTER (ADMIN, USER, ALMOX, CONTAB etc).
+ *                   Opcional para MASTER.
  *               employee:
  *                 type: object
  *                 required: [full_name]
@@ -136,7 +143,14 @@
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [MASTER, USER]
+ *                 enum: [MASTER, ADMIN, USER, ALMOX, CONTAB]
+ *               empresa_id:
+ *                 type: integer
+ *                 nullable: true
+ *                 description: >
+ *                   ID da empresa vinculada ao usuário.
+ *                   Obrigatório para perfis não-MASTER (ADMIN, USER, ALMOX, CONTAB etc).
+ *                   Opcional para MASTER.
  *               employee:
  *                 type: object
  *                 properties:
@@ -172,6 +186,36 @@
  *         description: Usuário removido
  *       404:
  *         description: Usuário não encontrado
+ */
+
+/**
+ * @openapi
+ * /users/pending-company-links:
+ *   get:
+ *     summary: Lista usuários não-MASTER sem empresa vinculada (pendências)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de usuários pendentes de vínculo com empresa
+ *       403:
+ *         description: Apenas MASTER pode acessar
+ */
+
+/**
+ * @openapi
+ * /users/pending-company-count:
+ *   get:
+ *     summary: Contagem de usuários não-MASTER sem empresa vinculada
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Contagem de pendências de vínculo com empresa
+ *       403:
+ *         description: Apenas MASTER pode acessar
  */
 
 /**

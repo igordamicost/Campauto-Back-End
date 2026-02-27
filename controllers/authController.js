@@ -38,7 +38,7 @@ async function login(req, res) {
   if (!ok) return res.status(401).json(invalidCreds);
 
   const token = jwt.sign(
-    { userId: user.id, roleId: user.role_id },
+    { userId: user.id, roleId: user.role_id, empresaId: user.empresa_id ?? null },
     process.env.JWT_SECRET
   );
   return res.json({ token });

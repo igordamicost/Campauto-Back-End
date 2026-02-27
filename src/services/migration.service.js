@@ -157,6 +157,11 @@ export class MigrationService {
         tables: ["empresas_logo_applied"],
         name: "Empresas - Logo em base64",
       },
+      {
+        file: "030_users_empresa.sql",
+        tables: ["users_empresa_applied"],
+        name: "Usuários - vínculo com empresas (empresa_id)",
+      },
     ];
 
     let executed = 0;
