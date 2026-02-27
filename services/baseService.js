@@ -4,8 +4,8 @@ import { getPool } from "../db.js";
 const columnsCache = new Map();
 
 async function getTableColumns(table) {
-  // Não cachear 'produtos' nem 'orcamentos' para que novas colunas sejam reconhecidas após migração
-  if (table !== 'produtos' && table !== 'orcamentos' && columnsCache.has(table)) return columnsCache.get(table);
+  // Não cachear tabelas que podem ganhar colunas via migração (ex.: loja em empresas)
+  if (!['produtos', 'orcamentos', 'empresas'].includes(table) && columnsCache.has(table)) return columnsCache.get(table);
   const pool = getPool();
   const [rows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
   const columns = rows

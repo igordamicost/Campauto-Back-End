@@ -12,27 +12,28 @@ export class ReservationRepository {
       product_id,
       customer_id,
       salesperson_user_id,
-      location_id = 1,
+      empresa_id = 1,
+      location_id,
       qty,
       due_at,
       notes,
       created_by,
     } = data;
+    const empId = empresa_id ?? location_id ?? 1;
 
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
 
-      // Criar reserva
       const [result] = await connection.query(
         `INSERT INTO reservations 
-         (product_id, customer_id, salesperson_user_id, location_id, qty, status, due_at, notes, created_by)
+         (product_id, customer_id, salesperson_user_id, empresa_id, qty, status, due_at, notes, created_by)
          VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`,
         [
           product_id,
           customer_id,
           salesperson_user_id,
-          location_id,
+          empId,
           qty,
           due_at,
           notes || null,
@@ -42,20 +43,18 @@ export class ReservationRepository {
 
       const reservationId = result.insertId;
 
-      // Atualizar saldo de estoque (aumentar qty_reserved)
       await connection.query(
-        `INSERT INTO stock_balances (product_id, location_id, qty_on_hand, qty_reserved)
+        `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
          VALUES (?, ?, 0, ?)
          ON DUPLICATE KEY UPDATE qty_reserved = qty_reserved + ?`,
-        [product_id, location_id, qty, qty]
+        [product_id, empId, qty, qty]
       );
 
-      // Registrar movimentação
       await connection.query(
         `INSERT INTO stock_movements 
-         (product_id, location_id, type, qty, ref_type, ref_id, created_by)
+         (product_id, empresa_id, type, qty, ref_type, ref_id, created_by)
          VALUES (?, ?, 'RESERVE', ?, 'RESERVATION', ?, ?)`,
-        [product_id, location_id, qty, reservationId, created_by || null]
+        [product_id, empId, qty, reservationId, created_by || null]
       );
 
       // Registrar evento
@@ -82,7 +81,7 @@ export class ReservationRepository {
   static async getById(id) {
     const [rows] = await db.query(
       `SELECT r.*,
-              p.id AS product_id, p.descricao AS product_name, p.codigo AS product_code,
+              p.id AS product_id, p.descricao AS product_name, p.codigo_produto AS product_code, p.codigo_fabrica AS product_factory_code,
               c.id AS customer_id, c.cliente AS customer_name,
               u.id AS salesperson_id, u.name AS salesperson_name, u.email AS salesperson_email
        FROM reservations r
@@ -147,7 +146,7 @@ export class ReservationRepository {
 
     const [rows] = await db.query(
       `SELECT r.*,
-              p.descricao AS product_name, p.codigo AS product_code,
+              p.descricao AS product_name, p.codigo_produto AS product_code, p.codigo_fabrica AS product_factory_code,
               c.cliente AS customer_name,
               u.name AS salesperson_name
        FROM reservations r
@@ -233,18 +232,18 @@ export class ReservationRepository {
       await connection.query(
         `UPDATE stock_balances 
          SET qty_reserved = qty_reserved - ?
-         WHERE product_id = ? AND location_id = ?`,
-        [reservation.qty, reservation.product_id, reservation.location_id]
+         WHERE product_id = ? AND empresa_id = ?`,
+        [reservation.qty, reservation.product_id, reservation.empresa_id]
       );
 
       // Registrar movimentação
       await connection.query(
         `INSERT INTO stock_movements 
-         (product_id, location_id, type, qty, ref_type, ref_id, created_by)
+         (product_id, empresa_id, type, qty, ref_type, ref_id, created_by)
          VALUES (?, ?, 'RESERVE_RETURN', ?, 'RESERVATION', ?, ?)`,
         [
           reservation.product_id,
-          reservation.location_id,
+          reservation.empresa_id,
           reservation.qty,
           id,
           userId,
@@ -297,18 +296,18 @@ export class ReservationRepository {
       await connection.query(
         `UPDATE stock_balances 
          SET qty_reserved = qty_reserved - ?
-         WHERE product_id = ? AND location_id = ?`,
-        [reservation.qty, reservation.product_id, reservation.location_id]
+         WHERE product_id = ? AND empresa_id = ?`,
+        [reservation.qty, reservation.product_id, reservation.empresa_id]
       );
 
       // Registrar movimentação
       await connection.query(
         `INSERT INTO stock_movements 
-         (product_id, location_id, type, qty, ref_type, ref_id, created_by)
+         (product_id, empresa_id, type, qty, ref_type, ref_id, created_by)
          VALUES (?, ?, 'RESERVE_RETURN', ?, 'RESERVATION', ?, ?)`,
         [
           reservation.product_id,
-          reservation.location_id,
+          reservation.empresa_id,
           reservation.qty,
           id,
           userId,

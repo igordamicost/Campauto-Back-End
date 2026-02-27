@@ -107,6 +107,21 @@ export class MigrationService {
         tables: ["servico_valor_historico"],
         name: "Histórico de valor por Serviço",
       },
+      {
+        file: "020_stock_pending_nf.sql",
+        tables: ["stock_pending_nf_applied"],
+        name: "Estoque - Aguardando NF (qty_pending_nf)",
+      },
+      {
+        file: "021_stock_by_empresa.sql",
+        tables: ["stock_by_empresa_applied"],
+        name: "Estoque por Empresa (empresa_id em saldos/movimentos/reservas)",
+      },
+      {
+        file: "022_empresas_loja.sql",
+        tables: ["empresas_loja_applied"],
+        name: "Empresas - Campo loja (boolean)",
+      },
     ];
 
     let executed = 0;
