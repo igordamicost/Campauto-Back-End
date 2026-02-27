@@ -132,6 +132,11 @@ export class MigrationService {
         tables: ["email_templates_global_applied"],
         name: "Email templates globais (sem owner_master_user_id)",
       },
+      {
+        file: "025_email_templates_global_fix.sql",
+        tables: ["email_templates_global_fix_applied"],
+        name: "Email templates globais - correção owner_master_user_id",
+      },
     ];
 
     let executed = 0;
