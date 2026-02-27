@@ -1,10 +1,20 @@
 import { z } from "zod";
 import { getPool } from "../db.js";
-import { DEFAULT_FIRST_ACCESS, DEFAULT_RESET } from "../src/constants/defaultEmailTemplates.js";
+import {
+  DEFAULT_FIRST_ACCESS,
+  DEFAULT_RESET,
+  DEFAULT_SUPPLIER_ORDER,
+  DEFAULT_CLIENT_QUOTE,
+} from "../src/constants/defaultEmailTemplates.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
 
-const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET"];
-const DEFAULTS = { FIRST_ACCESS: DEFAULT_FIRST_ACCESS, RESET: DEFAULT_RESET };
+const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET", "SUPPLIER_ORDER", "CLIENT_QUOTE"];
+const DEFAULTS = {
+  FIRST_ACCESS: DEFAULT_FIRST_ACCESS,
+  RESET: DEFAULT_RESET,
+  SUPPLIER_ORDER: DEFAULT_SUPPLIER_ORDER,
+  CLIENT_QUOTE: DEFAULT_CLIENT_QUOTE,
+};
 
 const putSchema = z.object({
   name: z.string().min(1).max(120),
@@ -18,13 +28,26 @@ const previewSchema = z.object({
   htmlBody: z.string(),
 });
 
-const MOCK_DATA = {
-  user_name: "João",
-  user_email: "joao@exemplo.com",
-  action_url: "https://exemplo.com/acao?token=abc",
-  token_expires_in: "1 hora",
-  company_name: "Minha Empresa",
-};
+function buildMockData() {
+  const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
+  const logoPath = "/LOGO_JR-CAR-OFICIAL (3).png";
+
+  return {
+    company_name: "JR Car Peças",
+    company_logo: `${baseUrl}${logoPath}`,
+    user_name: "João da Silva",
+    user_email: "joao.silva@exemplo.com",
+    action_url: `${baseUrl}/acao-de-exemplo?token=abc123`,
+    token_expires_in: "24 horas",
+    order_number: "PED-12345",
+    order_date: "01/03/2026",
+    supplier_name: "Fornecedor Exemplo",
+    quote_number: "ORC-98765",
+    quote_valid_until: "10/03/2026",
+    client_name: "Cliente Exemplo",
+    quote_total: "R$ 1.234,56",
+  };
+}
 
 function stripScript(html) {
   if (typeof html !== "string") return "";
@@ -63,7 +86,7 @@ async function list(req, res) {
     };
   });
 
-  res.json({ data: result });
+  res.json(result);
 }
 
 async function update(req, res) {
@@ -71,7 +94,9 @@ async function update(req, res) {
   const masterUserId = req.user.userId;
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
-    return res.status(400).json({ message: "templateKey inválido. Use FIRST_ACCESS ou RESET" });
+    return res.status(400).json({
+      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER ou CLIENT_QUOTE",
+    });
   }
 
   const parsed = putSchema.safeParse(req.body);
@@ -119,7 +144,9 @@ async function preview(req, res) {
   const { templateKey } = req.params;
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
-    return res.status(400).json({ message: "templateKey inválido. Use FIRST_ACCESS ou RESET" });
+    return res.status(400).json({
+      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER ou CLIENT_QUOTE",
+    });
   }
 
   const parsed = previewSchema.safeParse(req.body);
@@ -133,10 +160,15 @@ async function preview(req, res) {
   const { subject, htmlBody } = parsed.data;
   const safeHtml = stripScript(htmlBody);
 
-  const renderedSubject = renderTemplate(subject, MOCK_DATA);
-  const renderedHtml = renderTemplate(safeHtml, MOCK_DATA);
+  const mock = buildMockData();
+  const renderedSubject = renderTemplate(subject, mock);
+  const renderedHtml = renderTemplate(safeHtml, mock);
 
-  res.json({ renderedSubject, renderedHtml });
+  res.json({
+    subject: renderedSubject,
+    htmlBody: renderedHtml,
+    actionUrl: mock.action_url,
+  });
 }
 
 export { list, update, preview };

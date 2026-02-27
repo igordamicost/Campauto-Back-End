@@ -1,9 +1,19 @@
 import { getPool } from "../../db.js";
-import { DEFAULT_FIRST_ACCESS, DEFAULT_RESET } from "../constants/defaultEmailTemplates.js";
+import {
+  DEFAULT_FIRST_ACCESS,
+  DEFAULT_RESET,
+  DEFAULT_SUPPLIER_ORDER,
+  DEFAULT_CLIENT_QUOTE,
+} from "../constants/defaultEmailTemplates.js";
 import { renderTemplate } from "./templateRenderService.js";
 
-const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET"];
-const DEFAULTS = { FIRST_ACCESS: DEFAULT_FIRST_ACCESS, RESET: DEFAULT_RESET };
+const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET", "SUPPLIER_ORDER", "CLIENT_QUOTE"];
+const DEFAULTS = {
+  FIRST_ACCESS: DEFAULT_FIRST_ACCESS,
+  RESET: DEFAULT_RESET,
+  SUPPLIER_ORDER: DEFAULT_SUPPLIER_ORDER,
+  CLIENT_QUOTE: DEFAULT_CLIENT_QUOTE,
+};
 
 /**
  * Obtém owner_master_user_id da primeira integração ACTIVE (para RESET sem master em contexto).

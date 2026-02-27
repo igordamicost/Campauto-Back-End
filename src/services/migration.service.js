@@ -118,6 +118,11 @@ export class MigrationService {
         name: "Estoque por Empresa (empresa_id em saldos/movimentos/reservas)",
       },
       {
+        file: "023_email_templates_extend.sql",
+        tables: ["email_templates_extend_applied"],
+        name: "Email templates - SUPPLIER_ORDER / CLIENT_QUOTE",
+      },
+      {
         file: "022_empresas_loja.sql",
         tables: ["empresas_loja_applied"],
         name: "Empresas - Campo loja (boolean)",

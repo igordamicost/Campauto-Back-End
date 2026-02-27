@@ -13,11 +13,19 @@ function htmlEscape(str) {
 }
 
 const PLACEHOLDERS = [
+  "company_name",
+  "company_logo",
   "user_name",
   "user_email",
   "action_url",
   "token_expires_in",
-  "company_name",
+  "order_number",
+  "order_date",
+  "supplier_name",
+  "quote_number",
+  "quote_valid_until",
+  "client_name",
+  "quote_total",
 ];
 
 /**

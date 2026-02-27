@@ -2,7 +2,7 @@
  * @openapi
  * /stock/balances:
  *   get:
- *     summary: Lista saldos de estoque (requer stock.read)
+ *     summary: Lista saldos de estoque por produto e empresa (requer stock.read)
  *     tags: [Estoque]
  *     security:
  *       - bearerAuth: []
@@ -13,13 +13,27 @@
  *           type: integer
  *         description: Filtrar por produto
  *       - in: query
- *         name: locationId
+ *         name: empresa_id
  *         schema:
  *           type: integer
- *         description: Filtrar por localização
+ *         description: Filtrar por empresa (loja)
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Busca por código, descrição ou código de fábrica
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 2000
  *     responses:
  *       200:
- *         description: Lista de saldos
+ *         description: Lista de saldos (um por combinação produto + empresa)
  *         content:
  *           application/json:
  *             schema:
@@ -30,25 +44,32 @@
  *                   items:
  *                     type: object
  *                     properties:
- *                       id:
- *                         type: integer
  *                       product_id:
  *                         type: integer
- *                       product_name:
- *                         type: string
  *                       product_code:
  *                         type: string
- *                       location_id:
+ *                       product_factory_code:
+ *                         type: string
+ *                       product_name:
+ *                         type: string
+ *                       empresa_id:
  *                         type: integer
+ *                       empresa_nome:
+ *                         type: string
  *                       qty_on_hand:
  *                         type: number
- *                         description: Quantidade total em estoque
+ *                         description: Quantidade física em estoque
  *                       qty_reserved:
  *                         type: number
  *                         description: Quantidade reservada
+ *                       qty_pending_nf:
+ *                         type: number
+ *                         description: Quantidade faturada aguardando NF
  *                       qty_available:
  *                         type: number
- *                         description: Quantidade disponível (qty_on_hand - qty_reserved)
+ *                         description: Disponível (on_hand - reserved - pending_nf)
+ *                 total:
+ *                   type: integer
  *       403:
  *         description: Sem permissão stock.read
  */
@@ -67,9 +88,10 @@
  *         schema:
  *           type: integer
  *       - in: query
- *         name: locationId
+ *         name: empresa_id
  *         schema:
  *           type: integer
+ *         description: Filtrar por empresa (loja)
  *       - in: query
  *         name: type
  *         schema:
@@ -131,9 +153,9 @@
  *             properties:
  *               product_id:
  *                 type: integer
- *               location_id:
+ *               empresa_id:
  *                 type: integer
- *                 default: 1
+ *                 description: ID da empresa (loja) onde a movimentação ocorre
  *               type:
  *                 type: string
  *                 enum: [ENTRY, EXIT, ADJUSTMENT]
@@ -212,11 +234,10 @@
  *           default: 1
  *         description: Quantidade desejada
  *       - in: query
- *         name: locationId
+ *         name: empresa_id
  *         schema:
  *           type: integer
- *           default: 1
- *         description: Localização
+ *         description: Empresa (loja) onde deseja verificar disponibilidade
  *     responses:
  *       200:
  *         description: Disponibilidade do produto
@@ -244,6 +265,96 @@
  *         description: Produto não encontrado
  *       403:
  *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /stock/entries:
+ *   post:
+ *     summary: Entrada de estoque (manual ou código de barras) (requer stock.move)
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [product_id, empresa_id, quantity]
+ *             properties:
+ *               product_id:
+ *                 type: integer
+ *               empresa_id:
+ *                 type: integer
+ *                 description: Empresa (loja) que recebe o estoque
+ *               quantity:
+ *                 type: number
+ *               tipo:
+ *                 type: string
+ *                 description: "entrada_manual" ou "entrada_barras"
+ *               observacao:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Entrada registrada
+ *       403:
+ *         description: Sem permissão stock.move
+ */
+
+/**
+ * @openapi
+ * /stock/products/by-barcode:
+ *   get:
+ *     summary: Busca produto por código de barras (requer stock.read)
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: barcode
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Código de barras do produto
+ *     responses:
+ *       200:
+ *         description: Produto encontrado
+ *       404:
+ *         description: Produto não encontrado
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /stock/import-xml:
+ *   post:
+ *     summary: Importa XML de pedido/fábrica e dá entrada no estoque (requer stock.move)
+ *     tags: [Estoque]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [empresa_id, xml]
+ *             properties:
+ *               empresa_id:
+ *                 type: integer
+ *                 description: Empresa (loja) que recebe o estoque
+ *               xml:
+ *                 type: string
+ *                 description: Conteúdo XML do pedido/NF
+ *     responses:
+ *       201:
+ *         description: XML processado, entradas de estoque criadas
+ *       400:
+ *         description: Dados inválidos
+ *       403:
+ *         description: Sem permissão stock.move
  */
 
 /**
