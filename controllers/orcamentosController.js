@@ -1,6 +1,6 @@
 import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
-import { sendEmail as mailServiceSend } from "../services/email.service.js";
+import { sendEmail as mailServiceSend } from "../src/services/email.service.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
 import { generatePdf } from "../src/services/pdfGeneratorService.js";
 import { getQuoteHtml } from "../src/services/quoteHtmlBuilderService.js";
