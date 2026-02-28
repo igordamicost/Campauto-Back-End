@@ -1,5 +1,9 @@
 import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
+import { sendEmail as mailServiceSend } from "../services/email.service.js";
+import { renderTemplate } from "../src/services/templateRenderService.js";
+import { generatePdf } from "../src/services/pdfGeneratorService.js";
+import { getQuoteHtml } from "../src/services/quoteHtmlBuilderService.js";
 
 const TABLE = "orcamentos";
 // Novo histórico por SERVIÇO; tabela antiga servico_item_valor_historico permanece apenas para legado
@@ -396,10 +400,10 @@ async function getById(req, res) {
         valor_unitario: Number(s.valor_unitario || 0),
         itens: Array.isArray(s.itens)
           ? s.itens.map((it) => ({
-              item_id: it.item_id,
-              descricao: it.descricao,
-              concluido: !!it.concluido,
-            }))
+            item_id: it.item_id,
+            descricao: it.descricao,
+            concluido: !!it.concluido,
+          }))
           : [],
       }));
     } else {
@@ -451,8 +455,8 @@ async function getById(req, res) {
           valor: Number(row.valor),
           data: row.data
             ? (row.data instanceof Date
-                ? row.data.toISOString().slice(0, 10)
-                : String(row.data).slice(0, 10))
+              ? row.data.toISOString().slice(0, 10)
+              : String(row.data).slice(0, 10))
             : null,
         });
       }
@@ -719,4 +723,111 @@ async function remove(req, res) {
   res.json({ message: "Deleted" });
 }
 
-export { list, getById, create, update, updateStatus, remove };
+async function sendEmail(req, res) {
+  const pool = getPool();
+  const orcamentoId = Number(req.params.id);
+  const userEmail = req.body?.email; // Optional override
+
+  // 1. Fetch quote details (simulating getById internal logic but simplified)
+  const [rows] = await pool.query("SELECT * FROM orcamentos WHERE id = ?", [orcamentoId]);
+  const quote = rows[0];
+
+  if (!quote) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  // 2. Access control (MASTER or owner)
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
+  if (!isMaster && req.user?.userId && quote.usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  // Set json arrays
+  quote.json_itens = typeof quote.json_itens === 'string' ? JSON.parse(quote.json_itens) : quote.json_itens;
+  // Fallback map services to modern structure if needed.
+  let jsonItensServico = quote.json_itens_servico;
+  if (typeof jsonItensServico === "string") {
+    try { jsonItensServico = JSON.parse(jsonItensServico); } catch { jsonItensServico = []; }
+  }
+  quote.json_itens_servico = jsonItensServico || [];
+
+  // Fetch relations for the PDF
+  if (quote.cliente_id) {
+    const [clientes] = await pool.query("SELECT fantasia, razao_social, email, cpf_cnpj FROM clientes WHERE id = ?", [quote.cliente_id]);
+    quote.clientes = clientes[0] ? { nome: clientes[0].fantasia || clientes[0].razao_social, cpf_cnpj: clientes[0].cpf_cnpj, email: clientes[0].email } : null;
+  }
+
+  if (quote.empresa_id) {
+    const [empresas] = await pool.query("SELECT * FROM empresas WHERE id = ?", [quote.empresa_id]);
+    quote.empresas = empresas[0] || null;
+  }
+
+  const hasVeiculos = await tableExists("veiculos");
+  if (hasVeiculos && quote.veiculo_id) {
+    const [veiculos] = await pool.query("SELECT placa, modelo, marca FROM veiculos WHERE id = ?", [quote.veiculo_id]);
+    quote.veiculos = veiculos[0] || null;
+  }
+
+  // 3. Determine recipient email
+  const recipientEmail = userEmail || quote.clientes?.email;
+  if (!recipientEmail || typeof recipientEmail !== 'string') {
+    return res.status(400).json({ message: "O cliente não possui um e-mail cadastrado e nenhum e-mail foi fornecido na requisição." });
+  }
+
+  try {
+    // 4. Generate HTML and PDF
+    const htmlContent = getQuoteHtml(quote);
+    const pdfBuffer = await generatePdf(htmlContent);
+
+    // 5. Fetch email template
+    const [tplRows] = await pool.query(
+      "SELECT subject, html_body, is_active FROM email_templates WHERE template_key = ?",
+      ["CLIENT_QUOTE"]
+    );
+    let tpl = tplRows[0];
+
+    // Fallback se template estiver no DB inativo/ausente
+    if (!tpl || !tpl.is_active) {
+      if (!tpl && tplRows.length === 0) {
+        // If totally absent, mock default dynamically using DEFAULTS from defaultEmailTemplates
+        const { DEFAULT_CLIENT_QUOTE } = await import("../src/constants/defaultEmailTemplates.js");
+        tpl = DEFAULT_CLIENT_QUOTE;
+      } else {
+        return res.status(400).json({ message: "O template de e-mail de orçamentos (CLIENT_QUOTE) está inativo no sistema." });
+      }
+    }
+
+    // Prepare template data
+    const templateData = {
+      company_name: quote.empresas?.nome_fantasia || quote.empresas?.razao_social || process.env.COMPANY_NAME || "Campauto",
+      company_logo: quote.empresas?.logo_url || "",
+      client_name: quote.clientes?.nome || "Cliente",
+      quote_number: quote.numero_sequencial || quote.id,
+      quote_valid_until: quote.data ? new Date(new Date(quote.data).getTime() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : "15 dias", // Assume 15 days validity or whatever domain logic indicates
+      quote_total: `R$ ${Number(quote.total || 0).toFixed(2).replace('.', ',')}`
+    };
+
+    const renderedSubject = renderTemplate(tpl.subject, templateData);
+    const renderedBody = renderTemplate(tpl.html_body, templateData);
+
+    // 6. Send Email with Attachment
+    const attachments = [
+      {
+        filename: `Orcamento_${quote.numero_sequencial || quote.id}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }
+    ];
+
+    await mailServiceSend(recipientEmail, renderedSubject, renderedBody, attachments);
+
+    return res.status(200).json({ message: "E-mail enviado com sucesso" });
+  } catch (error) {
+    console.error("[sendEmail Quote] Falha:", error);
+    return res.status(500).json({ message: "Falha ao gerar o PDF ou enviar o e-mail.", error: error.message });
+  }
+}
+
+export { list, getById, create, update, updateStatus, remove, sendEmail };
