@@ -726,7 +726,19 @@ async function sendEmail(req, res) {
   const orcamentoId = Number(req.params.id);
   const userEmail = req.body?.email; // Optional override
 
+  console.log("[sendEmail] Iniciando rota enviar-email para orçamento ID:", orcamentoId);
+  console.log("[sendEmail] req.headers['content-type']:", req.headers['content-type']);
+  console.log("[sendEmail] req.body:", req.body);
+  console.log("[sendEmail] req.file:", req.file ? {
+    fieldname: req.file.fieldname,
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size,
+    hasBuffer: !!req.file.buffer
+  } : "NENHUM ARQUIVO (undefined)");
+
   if (!req.file || !req.file.buffer) {
+    console.warn("[sendEmail] Operação abortada: O arquivo PDF (file) não foi enviado na requisição.");
     return res.status(400).json({ message: "O arquivo PDF (file) não foi enviado." });
   }
 
