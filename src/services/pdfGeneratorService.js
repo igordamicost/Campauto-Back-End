@@ -10,11 +10,14 @@ export async function generatePdf(htmlContent) {
 
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
       launchArgs.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    } else {
+      // Fallback para Alpine Linux
+      launchArgs.executablePath = '/usr/bin/chromium-browser';
     }
 
     browser = await puppeteer.launch(launchArgs);
     const page = await browser.newPage();
-    
+
     // Set content and wait for network/fonts to load
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
