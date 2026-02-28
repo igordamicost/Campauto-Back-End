@@ -2,8 +2,6 @@ import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
 import { sendEmail as mailServiceSend } from "../src/services/email.service.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
-import { generatePdf } from "../src/services/pdfGeneratorService.js";
-import { getQuoteHtml } from "../src/services/quoteHtmlBuilderService.js";
 
 const TABLE = "orcamentos";
 // Novo histórico por SERVIÇO; tabela antiga servico_item_valor_historico permanece apenas para legado
@@ -728,6 +726,10 @@ async function sendEmail(req, res) {
   const orcamentoId = Number(req.params.id);
   const userEmail = req.body?.email; // Optional override
 
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({ message: "O arquivo PDF (file) não foi enviado." });
+  }
+
   // 1. Fetch quote details (simulating getById internal logic but simplified)
   const [rows] = await pool.query("SELECT * FROM orcamentos WHERE id = ?", [orcamentoId]);
   const quote = rows[0];
@@ -744,16 +746,7 @@ async function sendEmail(req, res) {
     return res.status(403).json({ message: "Acesso negado" });
   }
 
-  // Set json arrays
-  quote.json_itens = typeof quote.json_itens === 'string' ? JSON.parse(quote.json_itens) : quote.json_itens;
-  // Fallback map services to modern structure if needed.
-  let jsonItensServico = quote.json_itens_servico;
-  if (typeof jsonItensServico === "string") {
-    try { jsonItensServico = JSON.parse(jsonItensServico); } catch { jsonItensServico = []; }
-  }
-  quote.json_itens_servico = jsonItensServico || [];
-
-  // Fetch relations for the PDF
+  // Fetch relations for the templating
   if (quote.cliente_id) {
     const [clientes] = await pool.query("SELECT fantasia, razao_social, email, cpf_cnpj FROM clientes WHERE id = ?", [quote.cliente_id]);
     quote.clientes = clientes[0] ? { nome: clientes[0].fantasia || clientes[0].razao_social, cpf_cnpj: clientes[0].cpf_cnpj, email: clientes[0].email } : null;
@@ -764,12 +757,6 @@ async function sendEmail(req, res) {
     quote.empresas = empresas[0] || null;
   }
 
-  const hasVeiculos = await tableExists("veiculos");
-  if (hasVeiculos && quote.veiculo_id) {
-    const [veiculos] = await pool.query("SELECT placa, modelo, marca FROM veiculos WHERE id = ?", [quote.veiculo_id]);
-    quote.veiculos = veiculos[0] || null;
-  }
-
   // 3. Determine recipient email
   const recipientEmail = userEmail || quote.clientes?.email;
   if (!recipientEmail || typeof recipientEmail !== 'string') {
@@ -777,9 +764,10 @@ async function sendEmail(req, res) {
   }
 
   try {
-    // 4. Generate HTML and PDF
-    const htmlContent = getQuoteHtml(quote);
-    const pdfBuffer = await generatePdf(htmlContent);
+    // 4. Extract PDF from Multer request
+    const pdfBuffer = req.file.buffer;
+    const fallbackFilename = `Orcamento_${quote.numero_sequencial || quote.id}.pdf`;
+    const filename = req.file.originalname || fallbackFilename;
 
     // 5. Fetch email template
     const [tplRows] = await pool.query(
@@ -815,9 +803,9 @@ async function sendEmail(req, res) {
     // 6. Send Email with Attachment
     const attachments = [
       {
-        filename: `Orcamento_${quote.numero_sequencial || quote.id}.pdf`,
+        filename: filename,
         content: pdfBuffer,
-        contentType: 'application/pdf'
+        contentType: req.file.mimetype || 'application/pdf'
       }
     ];
 
@@ -826,7 +814,7 @@ async function sendEmail(req, res) {
     return res.status(200).json({ message: "E-mail enviado com sucesso" });
   } catch (error) {
     console.error("[sendEmail Quote] Falha:", error);
-    return res.status(500).json({ message: "Falha ao gerar o PDF ou enviar o e-mail.", error: error.message });
+    return res.status(500).json({ message: "Falha ao processar o arquivo ou enviar o e-mail.", error: error.message });
   }
 }
 
