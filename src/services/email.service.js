@@ -1,11 +1,12 @@
 import { transporter } from "../config/email.js";
 import { DEFAULT_FROM } from "../config/mail.js";
 
-export async function sendEmail(to, subject, html) {
+export async function sendEmail(to, subject, html, attachments = []) {
   return transporter.sendMail({
     from: DEFAULT_FROM || process.env.SMTP_USER,
     to,
     subject,
     html,
+    attachments,
   });
 }
