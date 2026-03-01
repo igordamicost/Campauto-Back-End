@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import { db } from "../config/database.js";
 import { createPasswordToken, consumeToken } from "../services/passwordTokenService.js";
-import { sendEmail } from "../services/email.service.js";
+import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../services/email.service.js";
+import { loadLogo } from "../services/logoLoader.js";
 import { getTemplate, renderWithData } from "../services/templateService.js";
 
 function isMasterRole(roleString, roleId) {
@@ -101,7 +102,8 @@ export async function forgotPassword(req, res) {
 
     const empresaNome =
       user.nome_fantasia || user.razao_social || defaultCompanyName;
-    const companyLogo = user.logo_url && typeof user.logo_url === "string" ? user.logo_url.trim() : "";
+    const logoUrl = user.logo_url && typeof user.logo_url === "string" ? user.logo_url.trim() : null;
+    const logoAttachment = await loadLogo({ logoUrl });
     const userName = user.name || "";
 
     const template = await getTemplate(null, "RESET");
@@ -111,11 +113,12 @@ export async function forgotPassword(req, res) {
       action_url: link,
       token_expires_in: "1 hora",
       company_name: empresaNome,
-      company_logo: companyLogo,
+      company_logo: logoAttachment ? "cid:company-logo" : "",
+      company_header_html: buildCompanyHeaderHtml(empresaNome, !!logoAttachment),
     });
 
     console.log("[forgotPassword] Enviando e-mail de reset para", email.trim());
-    await sendEmail(email.trim(), subject, html);
+    await sendEmailWithInlineLogo(email.trim(), subject, html, { logoAttachment });
     console.log("[forgotPassword] E-mail de reset enviado (sem erro aparente)");
   } catch (err) {
     console.error(

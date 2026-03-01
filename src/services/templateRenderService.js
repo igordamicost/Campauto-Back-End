@@ -15,6 +15,7 @@ function htmlEscape(str) {
 const PLACEHOLDERS = [
   "company_name",
   "company_logo",
+  "company_header_html",
   "user_name",
   "user_email",
   "action_url",
@@ -45,9 +46,10 @@ export function renderTemplate(template, data = {}) {
   if (!template || typeof template !== "string") return "";
   let result = sanitizeHtml(template);
 
+  const RAW_PLACEHOLDERS = ["company_header_html"];
   for (const key of PLACEHOLDERS) {
     const value = data[key] ?? "";
-    const escaped = htmlEscape(value);
+    const escaped = RAW_PLACEHOLDERS.includes(key) ? value : htmlEscape(value);
     const re = new RegExp(`\\{\\{${key}\\}\\}`, "g");
     result = result.replace(re, escaped);
   }

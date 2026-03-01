@@ -7,7 +7,8 @@ import {
   DEFAULT_CLIENT_QUOTE,
 } from "../src/constants/defaultEmailTemplates.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
-import { sendEmail } from "../src/services/email.service.js";
+import { sendEmail, sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services/email.service.js";
+import { loadLogo } from "../src/services/logoLoader.js";
 
 const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET", "SUPPLIER_ORDER", "CLIENT_QUOTE"];
 const DEFAULTS = {
@@ -231,16 +232,18 @@ async function testTemplate(req, res) {
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
 
   let companyName = "JR Car Peças";
-  let companyLogo = "";
+  let logoUrl = null;
   const [empresaRows] = await pool.query(
     "SELECT nome_fantasia, razao_social, logo_url FROM empresas LIMIT 1"
   );
   if (empresaRows[0]) {
     companyName = empresaRows[0].nome_fantasia || empresaRows[0].razao_social || companyName;
     if (empresaRows[0].logo_url && typeof empresaRows[0].logo_url === "string") {
-      companyLogo = empresaRows[0].logo_url.trim();
+      logoUrl = empresaRows[0].logo_url.trim();
     }
   }
+
+  const logoAttachment = await loadLogo({ logoUrl });
 
   const actionUrl =
     templateKey === "RESET"
@@ -251,7 +254,8 @@ async function testTemplate(req, res) {
 
   const context = {
     company_name: companyName,
-    company_logo: companyLogo,
+    company_logo: logoAttachment ? "cid:company-logo" : "",
+    company_header_html: buildCompanyHeaderHtml(companyName, !!logoAttachment),
     user_name: user.name || "Usuário",
     user_email: user.email,
     action_url: actionUrl,
@@ -270,7 +274,7 @@ async function testTemplate(req, res) {
   const renderedHtml = renderTemplate(safeHtml, context);
 
   try {
-    await sendEmail(user.email, renderedSubject, renderedHtml);
+    await sendEmailWithInlineLogo(user.email, renderedSubject, renderedHtml, { logoAttachment });
     console.log(
       `[EmailTemplates] E-mail de teste (${templateKey}) enviado para ${user.email}`
     );

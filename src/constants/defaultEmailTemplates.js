@@ -1,7 +1,7 @@
 /**
  * Templates padrão quando não existir no banco.
  * Placeholders suportados (podem ser usados em subject e HTML):
- * {{company_name}}, {{company_logo}},
+ * {{company_name}}, {{company_logo}}, {{company_header_html}},
  * {{user_name}}, {{user_email}}, {{action_url}}, {{token_expires_in}},
  * {{order_number}}, {{order_date}}, {{supplier_name}},
  * {{quote_number}}, {{quote_valid_until}}, {{client_name}}, {{quote_total}}
@@ -16,6 +16,7 @@ export const DEFAULT_FIRST_ACCESS = {
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
   <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
     <h2 style="margin:0 0 16px;color:#333;font-size:20px">Olá, {{user_name}}!</h2>
     <p style="margin:0 0 24px;color:#555;line-height:1.6">
       Você foi cadastrado em {{company_name}}. Para acessar o sistema, defina sua senha clicando no botão abaixo.
@@ -40,6 +41,7 @@ export const DEFAULT_RESET = {
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
   <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
     <h2 style="margin:0 0 16px;color:#333;font-size:20px">Olá, {{user_name}}!</h2>
     <p style="margin:0 0 24px;color:#555;line-height:1.6">
       Foi solicitada a recuperação de senha para {{user_email}} em {{company_name}}. Clique no botão abaixo para definir uma nova senha.
@@ -64,9 +66,7 @@ export const DEFAULT_SUPPLIER_ORDER = {
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
-    <div style="text-align:center;margin-bottom:16px">
-      <img src="{{company_logo}}" alt="{{company_name}}" style="max-width:200px;height:auto" />
-    </div>
+    <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
     <h2 style="margin:0 0 8px;color:#333;font-size:20px">Pedido {{order_number}}</h2>
     <p style="margin:0 0 8px;color:#555;line-height:1.6">
       Olá, {{supplier_name}}.
@@ -92,9 +92,7 @@ export const DEFAULT_CLIENT_QUOTE = {
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
-    <div style="text-align:center;margin-bottom:16px">
-      <img src="{{company_logo}}" alt="{{company_name}}" style="max-width:200px;height:auto" />
-    </div>
+    <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
     <h2 style="margin:0 0 8px;color:#333;font-size:20px">Orçamento {{quote_number}}</h2>
     <p style="margin:0 0 8px;color:#555;line-height:1.6">
       Olá, {{client_name}}.

@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
 import { createPasswordToken } from "../src/services/passwordTokenService.js";
-import { sendEmail } from "../src/services/email.service.js";
+import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services/email.service.js";
+import { loadLogo } from "../src/services/logoLoader.js";
 import { getTemplate, renderWithData } from "../src/services/templateService.js";
 
 function isMasterRole(roleString, roleId) {
@@ -299,7 +300,8 @@ async function createUser(req, res) {
   if (mustSetPassword === 1) {
     try {
       const token = await createPasswordToken(userId, "FIRST_ACCESS");
-      const link = `${process.env.FRONT_URL}/definir-senha?token=${token}`;
+      const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
+      const link = `${baseUrl}/definir-senha?token=${token}`;
       const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
 
       let empresaContext = {
@@ -327,6 +329,9 @@ async function createUser(req, res) {
         }
       }
 
+      const logoUrl = empresaContext.companyLogo;
+      const logoAttachment = await loadLogo({ logoUrl });
+
       const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
       const { subject, html } = renderWithData(template, {
         user_name: name,
@@ -334,10 +339,11 @@ async function createUser(req, res) {
         action_url: link,
         token_expires_in: "1 hora",
         company_name: empresaContext.companyName,
-        company_logo: empresaContext.companyLogo,
+        company_logo: logoAttachment ? "cid:company-logo" : "",
+        company_header_html: buildCompanyHeaderHtml(empresaContext.companyName, !!logoAttachment),
       });
 
-      await sendEmail(email, subject, html);
+      await sendEmailWithInlineLogo(email, subject, html, { logoAttachment });
     } catch (err) {
       return res.status(201).json({
         id: userId,
