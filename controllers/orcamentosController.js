@@ -692,6 +692,47 @@ async function updateStatus(req, res) {
   res.json({ message: "Status updated" });
 }
 
+async function updateTags(req, res) {
+  const orcamentoId = Number(req.params.id);
+  if (!orcamentoId) return res.status(400).json({ message: "ID inválido" });
+
+  const { tags } = req.body || {};
+  if (!Array.isArray(tags)) {
+    return res.status(400).json({ message: "tags deve ser um array" });
+  }
+
+  const validTags = ["venda_realizada", "venda_nao_realizada"];
+  const sanitized = tags
+    .filter((t) => typeof t === "string" && t.trim())
+    .filter((t) => validTags.includes(t.trim()));
+  const uniqueTags = [...new Set(sanitized)];
+
+  const pool = getPool();
+  const [rows] = await pool.query(
+    "SELECT id, usuario_id FROM orcamentos WHERE id = ?",
+    [orcamentoId]
+  );
+  if (!rows || rows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = role === "MASTER" || roleId === 1;
+  if (!isMaster && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  const tagsJson = JSON.stringify(uniqueTags);
+  const [result] = await pool.query(
+    "UPDATE orcamentos SET tags = ?, data_atualizacao = NOW() WHERE id = ?",
+    [tagsJson, orcamentoId]
+  );
+
+  if (result.affectedRows === 0) return res.status(404).json({ message: "Not found" });
+  res.json({ message: "Tags atualizadas", tags: uniqueTags });
+}
+
 async function remove(req, res) {
   const pool = getPool();
   const orcamentoId = Number(req.params.id);
@@ -830,4 +871,4 @@ async function sendEmail(req, res) {
   }
 }
 
-export { list, getById, create, update, updateStatus, remove, sendEmail };
+export { list, getById, create, update, updateStatus, updateTags, remove, sendEmail };

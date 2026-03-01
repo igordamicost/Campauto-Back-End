@@ -180,6 +180,40 @@
 
 /**
  * @openapi
+ * /orcamentos/{id}/tags:
+ *   patch:
+ *     summary: Atualiza tags do orçamento (venda_realizada, venda_nao_realizada)
+ *     tags: [Orçamentos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tags]
+ *             properties:
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   enum: [venda_realizada, venda_nao_realizada]
+ *     responses:
+ *       200:
+ *         description: Tags atualizadas
+ *       404:
+ *         description: Orçamento não encontrado
+ */
+
+/**
+ * @openapi
  * /orcamentos/{id}:
  *   delete:
  *     summary: Remove orçamento
