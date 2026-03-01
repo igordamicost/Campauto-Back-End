@@ -26,6 +26,10 @@
  *       - in: query
  *         name: sortDir
  *         schema: { type: string, enum: [asc, desc] }
+ *       - in: query
+ *         name: include
+ *         schema: { type: string }
+ *         description: "Ex: empresas para trazer dados da empresa vinculada"
  *     responses:
  *       200:
  *         description: Lista paginada de pedidos de compra
@@ -65,8 +69,11 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [json_itens]
+ *             required: [empresa_id, json_itens]
  *             properties:
+ *               empresa_id:
+ *                 type: integer
+ *                 description: ID da empresa (obrigatório)
  *               data:
  *                 type: string
  *                 format: date
@@ -119,6 +126,7 @@
  *           schema:
  *             type: object
  *             properties:
+ *               empresa_id: { type: integer }
  *               data: { type: string, format: date }
  *               status: { type: string, enum: [Pendente, Enviado, Cotado, Recebido, Cancelado] }
  *               observacoes: { type: string }
@@ -154,9 +162,9 @@
 
 /**
  * @openapi
- * /pedidos-compra/{id}/enviar-fornecedores:
- *   post:
- *     summary: Enviar e-mail do pedido para fornecedores
+ * /pedidos-compra/{id}/status:
+ *   patch:
+ *     summary: Atualizar status do pedido (ex.: cancelar)
  *     tags: [Pedidos de Compra]
  *     security:
  *       - bearerAuth: []
@@ -171,12 +179,46 @@
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [status]
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [Pendente, Enviado, Cotado, Recebido, Cancelado]
+ *     responses:
+ *       200:
+ *         description: Status atualizado
+ *       404:
+ *         description: Pedido não encontrado
+ */
+
+/**
+ * @openapi
+ * /pedidos-compra/{id}/enviar-fornecedores:
+ *   post:
+ *     summary: Enviar e-mail do pedido para fornecedores (multipart/form-data)
+ *     tags: [Pedidos de Compra]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
  *             required: [fornecedor_ids]
  *             properties:
  *               fornecedor_ids:
- *                 type: array
- *                 items: { type: integer }
- *                 description: IDs dos fornecedores que receberão o e-mail
+ *                 type: string
+ *                 description: "JSON string com array de IDs, ex: \"[1, 2, 3]\""
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: PDF do pedido (gerado pelo frontend) - anexado a cada e-mail
  *     responses:
  *       200:
  *         description: Resultado do envio

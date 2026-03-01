@@ -42,10 +42,10 @@ export function buildCompanyHeaderHtml(companyName, hasLogo) {
  * @param {string} to - Destinatário
  * @param {string} subject - Assunto
  * @param {string} html - HTML já renderizado (deve usar cid:company-logo no img quando logo anexado)
- * @param {{ logoAttachment?: { buffer: Buffer, contentType: string, filename: string } | null }} options
+ * @param {{ logoAttachment?: { buffer: Buffer, contentType: string, filename: string } | null, extraAttachments?: Array<{ filename: string, content: Buffer, contentType?: string }> }} options
  */
 export async function sendEmailWithInlineLogo(to, subject, html, options = {}) {
-  const { logoAttachment } = options;
+  const { logoAttachment, extraAttachments } = options;
   const attachments = [];
 
   if (logoAttachment?.buffer) {
@@ -56,6 +56,18 @@ export async function sendEmailWithInlineLogo(to, subject, html, options = {}) {
       cid: CID_LOGO,
     });
     console.log("[email] Logo inline anexado (cid:company-logo)");
+  }
+
+  if (Array.isArray(extraAttachments)) {
+    for (const att of extraAttachments) {
+      if (att?.content) {
+        attachments.push({
+          filename: att.filename || "anexo",
+          content: att.content,
+          contentType: att.contentType || "application/octet-stream",
+        });
+      }
+    }
   }
 
   return transporter.sendMail({

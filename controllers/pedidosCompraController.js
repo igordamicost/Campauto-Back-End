@@ -116,6 +116,9 @@ async function list(req, res) {
   const { data, total } = await baseService.listWithFilters(TABLE, query);
   const totalPages = Math.ceil(total / limit) || 1;
 
+  const include = query.include ? String(query.include).split(",").map((s) => s.trim()) : [];
+  const includeEmpresas = include.includes("empresas");
+
   const pool = getPool();
   const usuarioIds = [...new Set(data.map((r) => r.usuario_id).filter(Boolean))];
   let usuarioMap = new Map();
@@ -127,12 +130,28 @@ async function list(req, res) {
     usuarioMap = new Map(rows.map((r) => [r.id, r]));
   }
 
+  let empresaMap = new Map();
+  if (includeEmpresas && data.length > 0) {
+    const empresaIds = [...new Set(data.map((r) => r.empresa_id).filter(Boolean))];
+    if (empresaIds.length > 0) {
+      const [empRows] = await pool.query(
+        `SELECT id, nome_fantasia, razao_social, cnpj FROM empresas WHERE id IN (${empresaIds.map(() => "?").join(",")})`,
+        empresaIds
+      );
+      empresaMap = new Map(empRows.map((e) => [e.id, e]));
+    }
+  }
+
   const mapped = data.map((row) => {
     const u = usuarioMap.get(row.usuario_id);
-    return {
+    const out = {
       ...row,
       usuario: u ? { id: u.id, name: u.name, email: u.email } : null,
     };
+    if (includeEmpresas) {
+      out.empresas = row.empresa_id ? (empresaMap.get(row.empresa_id) || null) : null;
+    }
+    return out;
   });
 
   res.json({ data: mapped, page, perPage: limit, total, totalPages });
@@ -159,6 +178,14 @@ async function getById(req, res) {
   );
   item.usuario = userRows[0] || null;
 
+  if (item.empresa_id) {
+    const [empRows] = await pool.query(
+      "SELECT id, nome_fantasia, razao_social, cnpj FROM empresas WHERE id = ?",
+      [item.empresa_id]
+    );
+    item.empresas = empRows[0] || null;
+  }
+
   if (item.json_itens && typeof item.json_itens === "string") {
     try {
       item.json_itens = JSON.parse(item.json_itens);
@@ -171,7 +198,18 @@ async function getById(req, res) {
 }
 
 async function create(req, res) {
-  const { data: dataPedido, observacoes, json_itens } = req.body || {};
+  const { empresa_id, data: dataPedido, observacoes, json_itens } = req.body || {};
+
+  const empresaId = empresa_id != null ? Number(empresa_id) : null;
+  if (!empresaId) {
+    return res.status(400).json({ message: "empresa_id é obrigatório" });
+  }
+
+  const pool = getPool();
+  const [empRows] = await pool.query("SELECT id FROM empresas WHERE id = ?", [empresaId]);
+  if (!empRows || empRows.length === 0) {
+    return res.status(400).json({ message: "empresa_id inválido: empresa não encontrada" });
+  }
 
   const { parsed: itens, error: errItens } = normalizeJsonItens(json_itens);
   if (errItens) return res.status(400).json({ message: errItens });
@@ -188,8 +226,6 @@ async function create(req, res) {
   const numeroSequencial = await getProximoNumeroSequencial();
   const userId = req.user?.userId;
   if (!userId) return res.status(401).json({ message: "Não autenticado" });
-
-  const empresaId = req.user?.empresaId ?? null;
 
   const payload = {
     data: dataStr,
@@ -221,8 +257,21 @@ async function update(req, res) {
     return res.status(404).json({ message: "Not found" });
   }
 
-  const { data: dataPedido, observacoes, json_itens, status } = req.body || {};
+  const { empresa_id, data: dataPedido, observacoes, json_itens, status } = req.body || {};
   const payload = {};
+
+  if (empresa_id !== undefined) {
+    const empresaId = empresa_id != null ? Number(empresa_id) : null;
+    if (!empresaId) {
+      return res.status(400).json({ message: "empresa_id é obrigatório" });
+    }
+    const poolUpd = getPool();
+    const [empRows] = await poolUpd.query("SELECT id FROM empresas WHERE id = ?", [empresaId]);
+    if (!empRows || empRows.length === 0) {
+      return res.status(400).json({ message: "empresa_id inválido: empresa não encontrada" });
+    }
+    payload.empresa_id = empresaId;
+  }
 
   if (dataPedido !== undefined) payload.data = dataPedido;
   if (observacoes !== undefined) payload.observacoes = observacoes;
@@ -278,14 +327,63 @@ async function remove(req, res) {
   res.json({ message: "Deleted" });
 }
 
+async function updateStatus(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID inválido" });
+
+  const item = await baseService.getById(TABLE, id);
+  if (!item) return res.status(404).json({ message: "Not found" });
+
+  const role = String(req.user?.role || "").toUpperCase();
+  const roleId = req.user?.roleId;
+  const isMaster = isMasterRole(role, roleId);
+  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+    return res.status(404).json({ message: "Not found" });
+  }
+
+  const { status } = req.body || {};
+  if (!status || !STATUS_VALIDOS.includes(status)) {
+    return res.status(400).json({ message: `status inválido. Use: ${STATUS_VALIDOS.join(", ")}` });
+  }
+
+  const ok = await baseService.update(TABLE, id, { status });
+  if (!ok) return res.status(404).json({ message: "Not found" });
+  res.json({ message: "Status atualizado", status });
+}
+
+function parseFornecedorIds(val) {
+  if (Array.isArray(val)) return val;
+  if (val == null || val === "") return null;
+  const str = String(val).trim();
+  if (!str) return null;
+  try {
+    const parsed = JSON.parse(str);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map((x) => Number(x)).filter((n) => !Number.isNaN(n) && n > 0);
+  } catch {
+    return null;
+  }
+}
+
 async function enviarFornecedores(req, res) {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: "ID inválido" });
 
-  const { fornecedor_ids } = req.body || {};
-  if (!Array.isArray(fornecedor_ids) || fornecedor_ids.length === 0) {
-    return res.status(400).json({ message: "fornecedor_ids é obrigatório e deve ser array não vazio" });
+  const fornecedorIds = parseFornecedorIds(req.body?.fornecedor_ids);
+  if (!fornecedorIds || fornecedorIds.length === 0) {
+    return res.status(400).json({
+      message: "fornecedor_ids é obrigatório (JSON string, ex: \"[1, 2, 3]\") e deve conter ao menos um ID válido",
+    });
   }
+
+  const pdfFile = req.file;
+  const pdfAttachment = pdfFile?.buffer
+    ? {
+        filename: pdfFile.originalname || `Pedido_${id}.pdf`,
+        content: pdfFile.buffer,
+        contentType: pdfFile.mimetype || "application/pdf",
+      }
+    : null;
 
   const pool = getPool();
   const [pedidoRows] = await pool.query(
@@ -303,8 +401,8 @@ async function enviarFornecedores(req, res) {
   }
 
   const [fornecedoresRows] = await pool.query(
-    `SELECT id, nome_fantasia, razao_social, email FROM fornecedores WHERE id IN (${fornecedor_ids.map(() => "?").join(",")})`,
-    fornecedor_ids
+    `SELECT id, nome_fantasia, razao_social, email FROM fornecedores WHERE id IN (${fornecedorIds.map(() => "?").join(",")})`,
+    fornecedorIds
   );
 
   const enviados = [];
@@ -375,8 +473,9 @@ async function enviarFornecedores(req, res) {
     const subject = renderTemplate(templateSubject, context);
     const html = renderTemplate(templateBody, context);
 
+    const extraAttachments = pdfAttachment ? [pdfAttachment] : [];
     try {
-      await sendEmailWithInlineLogo(email, subject, html, { logoAttachment });
+      await sendEmailWithInlineLogo(email, subject, html, { logoAttachment, extraAttachments });
       await logSupplierOrderEmail({
         pedidoCompraId: id,
         fornecedorId: forn.id,
@@ -414,4 +513,4 @@ async function enviarFornecedores(req, res) {
   res.json({ enviados: enviados.length, erros });
 }
 
-export { list, getById, create, update, remove, enviarFornecedores };
+export { list, getById, create, update, updateStatus, remove, enviarFornecedores };

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS pedidos_compra (
   json_itens JSON NULL COMMENT 'Array de itens: produto_id, codigo_produto, produto, quantidade, unidade, preco_unitario, preco_custo, total',
   observacoes TEXT NULL,
   usuario_id INT NOT NULL,
-  empresa_id INT NULL,
+  empresa_id INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_numero_sequencial (numero_sequencial),
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS pedidos_compra (
   INDEX idx_usuario (usuario_id),
   INDEX idx_empresa (empresa_id),
   CONSTRAINT fk_pc_usuario FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_pc_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE SET NULL
+  CONSTRAINT fk_pc_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Pedidos de compra para cotação com fornecedores';
 
 -- Adicionar coluna pedido_compra_id em email_supplier_order_logs para referenciar pedidos_compra

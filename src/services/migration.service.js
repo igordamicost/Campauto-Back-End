@@ -177,6 +177,11 @@ export class MigrationService {
         tables: ["pedidos_compra_applied"],
         name: "Pedidos de compra (cotação com fornecedores)",
       },
+      {
+        file: "034_pedidos_compra_empresa_obrigatorio.sql",
+        tables: ["pedidos_compra_empresa_obrigatorio_applied"],
+        name: "Pedidos de compra - empresa_id obrigatório",
+      },
     ];
 
     let executed = 0;
