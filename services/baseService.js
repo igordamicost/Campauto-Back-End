@@ -5,13 +5,13 @@ const columnsCache = new Map();
 
 async function getTableColumns(table) {
   // Não cachear tabelas que podem ganhar colunas via migração (ex.: loja em empresas)
-  if (!['produtos', 'orcamentos', 'empresas'].includes(table) && columnsCache.has(table)) return columnsCache.get(table);
+  if (!['produtos', 'orcamentos', 'empresas', 'pedidos_compra'].includes(table) && columnsCache.has(table)) return columnsCache.get(table);
   const pool = getPool();
   const [rows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
   const columns = rows
     .map((row) => row.Field)
     .filter((field) => !['id', 'row_hash'].includes(field));
-  if (table !== 'produtos' && table !== 'orcamentos') columnsCache.set(table, columns);
+  if (table !== 'produtos' && table !== 'orcamentos' && table !== 'pedidos_compra') columnsCache.set(table, columns);
   return columns;
 }
 

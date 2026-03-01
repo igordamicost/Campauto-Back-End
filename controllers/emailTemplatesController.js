@@ -33,6 +33,20 @@ const previewSchema = z.object({
 function buildMockData() {
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
 
+  const tabelaItensMock = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:12px 0">
+      <thead><tr style="background:#f3f4f6">
+        <th style="padding:8px;border:1px solid #e5e7eb">Código</th>
+        <th style="padding:8px;border:1px solid #e5e7eb">Descrição</th>
+        <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">Qtd</th>
+        <th style="padding:8px;border:1px solid #e5e7eb">Un</th>
+        <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">Preço unit.</th>
+        <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">Total</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb">ABC001</td><td style="padding:8px;border:1px solid #e5e7eb">Produto Exemplo</td><td style="padding:8px;border:1px solid #e5e7eb;text-align:right">5</td><td style="padding:8px;border:1px solid #e5e7eb">UN</td><td style="padding:8px;border:1px solid #e5e7eb;text-align:right">10,50</td><td style="padding:8px;border:1px solid #e5e7eb;text-align:right">52,50</td></tr>
+      </tbody>
+    </table>`;
   return {
     company_name: "JR Car Peças",
     company_logo: "",
@@ -47,6 +61,9 @@ function buildMockData() {
     quote_valid_until: "10/03/2026",
     client_name: "Cliente Exemplo",
     quote_total: "R$ 1.234,56",
+    tabela_itens: tabelaItensMock,
+    observacoes: "Urgente",
+    observacoes_html: "<p style=\"margin:12px 0 0;color:#555;line-height:1.6\"><strong>Observações:</strong> Urgente</p>",
   };
 }
 

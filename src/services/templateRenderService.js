@@ -27,6 +27,9 @@ const PLACEHOLDERS = [
   "quote_valid_until",
   "client_name",
   "quote_total",
+  "tabela_itens",
+  "observacoes",
+  "observacoes_html",
 ];
 
 /**
@@ -46,7 +49,7 @@ export function renderTemplate(template, data = {}) {
   if (!template || typeof template !== "string") return "";
   let result = sanitizeHtml(template);
 
-  const RAW_PLACEHOLDERS = ["company_header_html"];
+  const RAW_PLACEHOLDERS = ["company_header_html", "tabela_itens", "observacoes_html"];
   for (const key of PLACEHOLDERS) {
     const value = data[key] ?? "";
     const escaped = RAW_PLACEHOLDERS.includes(key) ? value : htmlEscape(value);

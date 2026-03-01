@@ -172,6 +172,11 @@ export class MigrationService {
         tables: ["empresas_logo_url_applied"],
         name: "Empresas - Logo por URL (substitui logo_base64)",
       },
+      {
+        file: "033_pedidos_compra.sql",
+        tables: ["pedidos_compra_applied"],
+        name: "Pedidos de compra (cotação com fornecedores)",
+      },
     ];
 
     let executed = 0;

@@ -74,6 +74,9 @@ export const DEFAULT_SUPPLIER_ORDER = {
     <p style="margin:0 0 8px;color:#555;line-height:1.6">
       Encaminhamos o pedido {{order_number}}, emitido em {{order_date}} por {{company_name}}.
     </p>
+    <p style="margin:12px 0 4px;color:#333;font-size:14px;font-weight:600">Itens solicitados:</p>
+    {{tabela_itens}}
+    {{observacoes_html}}
     <p style="margin:16px 0 0;color:#888;font-size:12px">
       Este é um e-mail automático, por favor não responda diretamente.
     </p>
