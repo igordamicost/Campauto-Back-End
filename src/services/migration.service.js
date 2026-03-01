@@ -182,6 +182,11 @@ export class MigrationService {
         tables: ["pedidos_compra_empresa_obrigatorio_applied"],
         name: "Pedidos de compra - empresa_id obrigatório",
       },
+      {
+        file: "035_orcamentos_tags.sql",
+        tables: ["orcamentos_tags_applied"],
+        name: "Orçamentos - coluna tags (venda_realizada, venda_nao_realizada)",
+      },
     ];
 
     let executed = 0;

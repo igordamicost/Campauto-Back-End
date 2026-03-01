@@ -4,8 +4,13 @@ import { CommissionService } from "../src/services/commissionService.js";
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
-const STATUS_FATURADO = "Faturado";
-const STATUS_CANCELADO = "Cancelado";
+const TAG_VENDA_REALIZADA = "venda_realizada";
+const TAG_VENDA_NAO_REALIZADA = "venda_nao_realizada";
+
+/** Verifica se JSON array tags contém a tag (MySQL) */
+function jsonContainsTag(tagsCol, tag) {
+  return `JSON_CONTAINS(COALESCE(${tagsCol}, '[]'), '"${tag}"', '$')`;
+}
 
 function validateMonth(month) {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
@@ -32,17 +37,20 @@ async function getMySalesMetrics(req, res) {
     }
     const { startDate, endDate } = validated;
 
+    const hasVendaRealizada = jsonContainsTag("tags", TAG_VENDA_REALIZADA);
+    const hasVendaNaoRealizada = jsonContainsTag("tags", TAG_VENDA_NAO_REALIZADA);
+
     const [rows] = await db.query(
       `SELECT
          COUNT(*) AS orcamentos,
-         COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS quantidade_vendas,
-         COALESCE(SUM(CASE WHEN status = ? THEN total ELSE 0 END), 0) AS vendas_reais,
-         COALESCE(SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END), 0) AS orcamentos_nao_fechados
+         COALESCE(SUM(CASE WHEN ${hasVendaRealizada} THEN 1 ELSE 0 END), 0) AS quantidade_vendas,
+         COALESCE(SUM(CASE WHEN ${hasVendaRealizada} THEN total ELSE 0 END), 0) AS vendas_reais,
+         COALESCE(SUM(CASE WHEN ${hasVendaNaoRealizada} THEN 1 ELSE 0 END), 0) AS orcamentos_nao_fechados
        FROM orcamentos
        WHERE usuario_id = ?
          AND data >= ?
          AND data <= ?`,
-      [STATUS_FATURADO, STATUS_FATURADO, STATUS_FATURADO, STATUS_CANCELADO, userId, startDate, endDate]
+      [userId, startDate, endDate]
     );
 
     const r = rows[0];
@@ -59,7 +67,7 @@ async function getMySalesMetrics(req, res) {
 }
 
 /**
- * Lista de vendas do mês (orçamentos faturados)
+ * Lista de vendas do mês (orçamentos com tag venda_realizada)
  * GET /reports/my-sales?month=YYYY-MM
  */
 async function getMySales(req, res) {
@@ -74,6 +82,8 @@ async function getMySales(req, res) {
     }
     const { startDate, endDate } = validated;
 
+    const hasVendaRealizada = jsonContainsTag("o.tags", TAG_VENDA_REALIZADA);
+
     const [vendasRows] = await db.query(
       `SELECT o.id, o.data, o.total AS valor, o.status,
               c.fantasia, c.razao_social, c.cliente
@@ -82,9 +92,9 @@ async function getMySales(req, res) {
        WHERE o.usuario_id = ?
          AND o.data >= ?
          AND o.data <= ?
-         AND o.status = ?
+         AND ${hasVendaRealizada}
        ORDER BY o.data DESC, o.id DESC`,
-      [userId, startDate, endDate, STATUS_FATURADO]
+      [userId, startDate, endDate]
     );
 
     const vendas = vendasRows.map((row) => ({
@@ -118,6 +128,8 @@ async function getMySalesEvolucao(req, res) {
 
     const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
 
+    const hasVendaRealizada = jsonContainsTag("o.tags", TAG_VENDA_REALIZADA);
+
     const [rows] = await db.query(
       `SELECT
          DATE_FORMAT(o.data, '%Y-%m') AS month,
@@ -125,11 +137,11 @@ async function getMySalesEvolucao(req, res) {
          COUNT(*) AS quantidade
        FROM orcamentos o
        WHERE o.usuario_id = ?
-         AND o.status = ?
+         AND ${hasVendaRealizada}
          AND o.data >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL ? MONTH), '%Y-%m-01')
        GROUP BY DATE_FORMAT(o.data, '%Y-%m')
        ORDER BY month ASC`,
-      [userId, STATUS_FATURADO, months]
+      [userId, months]
     );
 
     const dataByMonth = new Map(rows.map((r) => [r.month, { valor: Number(r.valor), quantidade: Number(r.quantidade) }]));

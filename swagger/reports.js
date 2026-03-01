@@ -20,10 +20,10 @@
  *             schema:
  *               type: object
  *               properties:
- *                 orcamentos: { type: integer }
- *                 vendas_reais: { type: number }
- *                 quantidade_vendas: { type: integer }
- *                 orcamentos_nao_fechados: { type: integer }
+ *                 orcamentos: { type: integer, description: Total de orçamentos no mês }
+ *                 vendas_reais: { type: number, description: Soma dos orçamentos com tag venda_realizada }
+ *                 quantidade_vendas: { type: integer, description: Orçamentos com tag venda_realizada }
+ *                 orcamentos_nao_fechados: { type: integer, description: Orçamentos com tag venda_nao_realizada }
  *       400:
  *         description: Mês inválido
  *       403:
@@ -34,7 +34,7 @@
  * @openapi
  * /reports/my-sales:
  *   get:
- *     summary: Lista de vendas do mês (orçamentos faturados)
+ *     summary: Lista de vendas do mês (orçamentos com tag venda_realizada)
  *     tags: [Relatórios]
  *     security:
  *       - bearerAuth: []
