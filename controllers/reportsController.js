@@ -4,66 +4,149 @@ import { CommissionService } from "../src/services/commissionService.js";
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
+const STATUS_FATURADO = "Faturado";
+const STATUS_CANCELADO = "Cancelado";
+
+function validateMonth(month) {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    return { error: "Parâmetro month é obrigatório no formato YYYY-MM" };
+  }
+  const [y, m] = month.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return { startDate: `${month}-01`, endDate: `${month}-${String(lastDay).padStart(2, "0")}` };
+}
+
 /**
- * Relatório de vendas do usuário logado
+ * Métricas do mês - Meu Desempenho
+ * GET /reports/my-sales/metrics?month=YYYY-MM
+ */
+async function getMySalesMetrics(req, res) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ message: "Não autenticado" });
+
+    const { month } = req.query;
+    const validated = validateMonth(month);
+    if (validated.error) {
+      return res.status(400).json({ message: validated.error });
+    }
+    const { startDate, endDate } = validated;
+
+    const [rows] = await db.query(
+      `SELECT
+         COUNT(*) AS orcamentos,
+         COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS quantidade_vendas,
+         COALESCE(SUM(CASE WHEN status = ? THEN total ELSE 0 END), 0) AS vendas_reais,
+         COALESCE(SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END), 0) AS orcamentos_nao_fechados
+       FROM orcamentos
+       WHERE usuario_id = ?
+         AND data >= ?
+         AND data <= ?`,
+      [STATUS_FATURADO, STATUS_FATURADO, STATUS_FATURADO, STATUS_CANCELADO, userId, startDate, endDate]
+    );
+
+    const r = rows[0];
+    return res.json({
+      orcamentos: Number(r.orcamentos),
+      vendas_reais: Number(r.vendas_reais),
+      quantidade_vendas: Number(r.quantidade_vendas),
+      orcamentos_nao_fechados: Number(r.orcamentos_nao_fechados),
+    });
+  } catch (error) {
+    console.error("Error getting my sales metrics:", error);
+    return res.status(500).json({ message: "Erro ao buscar métricas" });
+  }
+}
+
+/**
+ * Lista de vendas do mês (orçamentos faturados)
  * GET /reports/my-sales?month=YYYY-MM
  */
 async function getMySales(req, res) {
   try {
-    const userId = req.user.userId;
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ message: "Não autenticado" });
+
     const { month } = req.query;
-
-    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({
-        message: "Parâmetro month é obrigatório no formato YYYY-MM",
-      });
+    const validated = validateMonth(month);
+    if (validated.error) {
+      return res.status(400).json({ message: validated.error });
     }
+    const { startDate, endDate } = validated;
 
-    const startDate = `${month}-01`;
-    const endDate = `${month}-31`;
-
-    // Total vendido
-    const [totalRows] = await db.query(
-      `SELECT 
-         COUNT(*) AS total_sales,
-         COALESCE(SUM(total), 0) AS total_amount,
-         COALESCE(AVG(total), 0) AS average_ticket
-       FROM sales
-       WHERE salesperson_user_id = ?
-         AND DATE(created_at) >= ?
-         AND DATE(created_at) <= ?
-         AND status != 'CANCELED'`,
-      [userId, startDate, endDate]
+    const [vendasRows] = await db.query(
+      `SELECT o.id, o.data, o.total AS valor, o.status,
+              c.fantasia, c.razao_social, c.cliente
+       FROM orcamentos o
+       LEFT JOIN clientes c ON c.id = o.cliente_id
+       WHERE o.usuario_id = ?
+         AND o.data >= ?
+         AND o.data <= ?
+         AND o.status = ?
+       ORDER BY o.data DESC, o.id DESC`,
+      [userId, startDate, endDate, STATUS_FATURADO]
     );
 
-    const stats = totalRows[0];
+    const vendas = vendasRows.map((row) => ({
+      id: row.id,
+      data: row.data ? String(row.data).slice(0, 10) : null,
+      cliente_nome: row.fantasia || row.razao_social || row.cliente || "—",
+      valor: Number(row.valor) || 0,
+      status: row.status,
+    }));
 
-    // Vendas por dia
-    const [dailyRows] = await db.query(
-      `SELECT 
-         DATE(created_at) AS date,
-         COUNT(*) AS count,
-         SUM(total) AS amount
-       FROM sales
-       WHERE salesperson_user_id = ?
-         AND DATE(created_at) >= ?
-         AND DATE(created_at) <= ?
-         AND status != 'CANCELED'
-       GROUP BY DATE(created_at)
-       ORDER BY date ASC`,
-      [userId, startDate, endDate]
-    );
+    const total = vendas.reduce((s, v) => s + v.valor, 0);
 
     return res.json({
-      month,
-      total_sales: Number(stats.total_sales),
-      total_amount: Number(stats.total_amount),
-      average_ticket: Number(stats.average_ticket),
-      daily_breakdown: dailyRows,
+      vendas,
+      resumo: { total, quantidade: vendas.length },
     });
   } catch (error) {
     console.error("Error getting my sales:", error);
     return res.status(500).json({ message: "Erro ao buscar vendas" });
+  }
+}
+
+/**
+ * Evolução mensal (gráfico de linha)
+ * GET /reports/my-sales/evolucao?months=12
+ */
+async function getMySalesEvolucao(req, res) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ message: "Não autenticado" });
+
+    const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
+
+    const [rows] = await db.query(
+      `SELECT
+         DATE_FORMAT(o.data, '%Y-%m') AS month,
+         COALESCE(SUM(o.total), 0) AS valor,
+         COUNT(*) AS quantidade
+       FROM orcamentos o
+       WHERE o.usuario_id = ?
+         AND o.status = ?
+         AND o.data >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL ? MONTH), '%Y-%m-01')
+       GROUP BY DATE_FORMAT(o.data, '%Y-%m')
+       ORDER BY month ASC`,
+      [userId, STATUS_FATURADO, months]
+    );
+
+    const dataByMonth = new Map(rows.map((r) => [r.month, { valor: Number(r.valor), quantidade: Number(r.quantidade) }]));
+
+    const evolucao = [];
+    const now = new Date();
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const data = dataByMonth.get(month) || { valor: 0, quantidade: 0 };
+      evolucao.push({ month, valor: data.valor, quantidade: data.quantidade });
+    }
+
+    return res.json({ evolucao });
+  } catch (error) {
+    console.error("Error getting my sales evolucao:", error);
+    return res.status(500).json({ message: "Erro ao buscar evolução" });
   }
 }
 
@@ -201,7 +284,9 @@ async function calculateCommission(req, res) {
 }
 
 export default {
+  getMySalesMetrics: asyncHandler(getMySalesMetrics),
   getMySales: asyncHandler(getMySales),
+  getMySalesEvolucao: asyncHandler(getMySalesEvolucao),
   getMyCommissions: asyncHandler(getMyCommissions),
   getCommissionsBySalesperson: asyncHandler(getCommissionsBySalesperson),
   calculateCommission: asyncHandler(calculateCommission),

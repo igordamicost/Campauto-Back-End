@@ -8,7 +8,9 @@ const router = express.Router();
 // Todas as rotas requerem autenticação
 router.use(authMiddleware);
 
-// Relatório de vendas do próprio usuário
+// Meu Desempenho - rotas mais específicas primeiro
+router.get("/my-sales/metrics", requirePermission("reports.my_sales.read"), reportsController.getMySalesMetrics);
+router.get("/my-sales/evolucao", requirePermission("reports.my_sales.read"), reportsController.getMySalesEvolucao);
 router.get("/my-sales", requirePermission("reports.my_sales.read"), reportsController.getMySales);
 
 export default router;
