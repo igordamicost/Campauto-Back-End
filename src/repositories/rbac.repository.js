@@ -431,7 +431,7 @@ export class RBACRepository {
   static async getAllModules() {
     try {
       const [rows] = await db.query(
-        "SELECT id, `key`, label, description, created_at, updated_at FROM modules ORDER BY label"
+        "SELECT id, `key`, label, description, icon, `order`, created_at, updated_at FROM modules ORDER BY COALESCE(`order`, 999), label"
       );
       return rows;
     } catch (error) {
@@ -445,7 +445,7 @@ export class RBACRepository {
    */
   static async getModuleById(moduleId) {
     const [rows] = await db.query(
-      "SELECT id, `key`, label, description, created_at, updated_at FROM modules WHERE id = ?",
+      "SELECT id, `key`, label, description, icon, `order`, created_at, updated_at FROM modules WHERE id = ?",
       [moduleId]
     );
     return rows[0] || null;
@@ -456,7 +456,7 @@ export class RBACRepository {
    */
   static async getModuleByKey(key) {
     const [rows] = await db.query(
-      "SELECT id, `key`, label, description FROM modules WHERE `key` = ?",
+      "SELECT id, `key`, label, description, icon, `order` FROM modules WHERE `key` = ?",
       [key?.trim()?.toLowerCase()]
     );
     return rows[0] || null;
@@ -479,10 +479,10 @@ export class RBACRepository {
   /**
    * Cria módulo
    */
-  static async createModule(key, label, description = null) {
+  static async createModule(key, label, description = null, icon = null, order = 0) {
     const [result] = await db.query(
-      "INSERT INTO modules (`key`, label, description) VALUES (?, ?, ?)",
-      [key?.trim()?.toLowerCase(), label?.trim(), description?.trim() || null]
+      "INSERT INTO modules (`key`, label, description, icon, `order`) VALUES (?, ?, ?, ?, ?)",
+      [key?.trim()?.toLowerCase(), label?.trim(), description?.trim() || null, icon || null, order ?? 0]
     );
     return await this.getModuleById(result.insertId);
   }
@@ -504,6 +504,14 @@ export class RBACRepository {
     if (updates.description !== undefined) {
       updateFields.push("description = ?");
       params.push(updates.description?.trim() || null);
+    }
+    if (updates.icon !== undefined) {
+      updateFields.push("icon = ?");
+      params.push(updates.icon?.trim() || null);
+    }
+    if (updates.order !== undefined) {
+      updateFields.push("`order` = ?");
+      params.push(updates.order ?? 0);
     }
     if (updateFields.length === 0) return await this.getModuleById(moduleId);
     params.push(moduleId);

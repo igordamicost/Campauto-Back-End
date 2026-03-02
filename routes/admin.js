@@ -45,22 +45,22 @@ router.post("/menu", requireDev, menuController.createMenuItem);
 router.put("/menu/:id", requireDev, menuController.updateMenuItem);
 router.delete("/menu/:id", requireDev, menuController.deleteMenuItem);
 
-// Módulos (requer admin.roles.manage)
-router.get("/modules", requirePermission("admin.roles.manage"), adminController.listModules);
-router.get("/modules/:id", requirePermission("admin.roles.manage"), adminController.getModuleById);
-router.post("/modules", requirePermission("admin.roles.manage"), adminController.createModule);
-router.put("/modules/:id", requirePermission("admin.roles.manage"), adminController.updateModule);
-router.delete("/modules/:id", requirePermission("admin.roles.manage"), adminController.deleteModule);
+// Módulos (apenas DEV - configuração do sistema)
+router.get("/modules", requireDev, adminController.listModules);
+router.get("/modules/:id", requireDev, adminController.getModuleById);
+router.post("/modules", requireDev, adminController.createModule);
+router.put("/modules/:id", requireDev, adminController.updateModule);
+router.delete("/modules/:id", requireDev, adminController.deleteModule);
 
-// Roles e Permissões (requer permissão específica)
+// Roles e Permissões (requer admin.roles.manage - DEV atribui a MASTER)
 router.get("/roles", requirePermission("admin.roles.manage"), adminController.listRoles);
 router.get("/roles/:id", requirePermission("admin.roles.manage"), adminController.getRoleById);
 router.post("/roles", requirePermission("admin.roles.manage"), adminController.createRole);
 router.put("/roles/:id", requirePermission("admin.roles.manage"), adminController.updateRole);
 router.get("/permissions", requirePermission("admin.roles.manage"), adminController.listPermissions);
-router.post("/permissions", requirePermission("admin.roles.manage"), adminController.createPermission);
-router.put("/permissions/:id", requirePermission("admin.roles.manage"), adminController.updatePermission);
-router.delete("/permissions/:id", requirePermission("admin.roles.manage"), adminController.deletePermission);
+router.post("/permissions", requireDev, adminController.createPermission);
+router.put("/permissions/:id", requireDev, adminController.updatePermission);
+router.delete("/permissions/:id", requireDev, adminController.deletePermission);
 router.get("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.getRolePermissions);
 router.put("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.updateRolePermissions);
 

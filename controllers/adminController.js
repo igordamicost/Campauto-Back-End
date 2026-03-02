@@ -658,7 +658,7 @@ async function getModuleById(req, res) {
 
 async function createModule(req, res) {
   try {
-    const { key, label, description } = req.body;
+    const { key, label, description, icon, order } = req.body;
 
     if (!key || key.trim() === "") {
       return res.status(400).json({ message: "Key do módulo é obrigatória" });
@@ -673,7 +673,7 @@ async function createModule(req, res) {
       return res.status(409).json({ message: "Módulo com esta key já existe" });
     }
 
-    const module = await RBACRepository.createModule(key, label, description);
+    const module = await RBACRepository.createModule(key, label, description, icon, order);
 
     return res.status(201).json(module);
   } catch (error) {
@@ -690,7 +690,7 @@ async function createModule(req, res) {
 async function updateModule(req, res) {
   try {
     const { id } = req.params;
-    const { key, label, description } = req.body;
+    const { key, label, description, icon, order } = req.body;
 
     const module = await RBACRepository.getModuleById(id);
     if (!module) {
@@ -701,6 +701,8 @@ async function updateModule(req, res) {
     if (key !== undefined) updates.key = key;
     if (label !== undefined) updates.label = label;
     if (description !== undefined) updates.description = description;
+    if (icon !== undefined) updates.icon = icon;
+    if (order !== undefined) updates.order = order;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "Nenhum campo para atualizar" });
