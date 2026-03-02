@@ -91,7 +91,8 @@ async function getMe(req, res) {
         const permSet = new Set(userWithPermissions.permissions || []);
         filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
       }
-      menu = buildMenuTree(filtered, null);
+      const tree = buildMenuTree(filtered, null);
+      menu = pruneEmptyParents(tree);
     } catch (menuErr) {
       if (menuErr.code !== "ER_NO_SUCH_TABLE") console.warn("getMe menu:", menuErr.message);
     }
@@ -107,7 +108,13 @@ async function getMe(req, res) {
           description: userWithPermissions.role_description,
         },
       },
-      modules: userWithPermissions.modules || [],
+      modules: (userWithPermissions.modules || []).map((m) => ({
+        id: m.id,
+        key: m.key,
+        label: m.label,
+        icon: m.icon ?? null,
+        order: m.order ?? 0,
+      })),
       permissions: userWithPermissions.permissions,
       permissionsDetail: userWithPermissions.permissionsDetail,
       menu,
@@ -139,6 +146,22 @@ function buildMenuTree(items, parentId) {
       permission_delete: item.permission_delete,
       children: buildMenuTree(items, item.id),
     }));
+}
+
+/** Remove pais sem filhos e sem path próprio (menu colapsável vazio) */
+function pruneEmptyParents(tree) {
+  return tree
+    .map((item) => {
+      if (item.children && item.children.length > 0) {
+        item.children = pruneEmptyParents(item.children);
+      }
+      return item;
+    })
+    .filter((item) => {
+      const hasChildren = item.children && item.children.length > 0;
+      const hasPath = item.path != null && String(item.path).trim() !== "";
+      return hasChildren || hasPath;
+    });
 }
 
 async function refresh(req, res) {

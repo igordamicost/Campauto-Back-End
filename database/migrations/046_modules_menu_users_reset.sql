@@ -30,17 +30,17 @@ SET @col_order = (SELECT COUNT(*) FROM information_schema.columns
 SET @sql = IF(@col_order = 0, 'ALTER TABLE modules ADD COLUMN `order` INT DEFAULT 0', 'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Seed módulos (todos os do sistema)
+-- Seed módulos (conforme frontend)
 INSERT INTO modules (`key`, label, description, icon, `order`) VALUES
-  ('dashboard', 'Dashboard', 'Mapa do sistema', 'LayoutDashboard', 0),
+  ('dashboard', 'Mapa do Sistema', 'Dashboard principal', 'LayoutDashboard', 0),
   ('vendas', 'Vendas', 'Vendas, orçamentos e pedidos', 'ShoppingCart', 1),
-  ('clientes', 'Clientes', 'Clientes e veículos', 'UserCircle', 2),
-  ('oficina', 'Oficina', 'Ordens de serviço', 'Wrench', 3),
-  ('estoque', 'Estoque', 'Produtos e movimentações', 'Package', 4),
-  ('financeiro', 'Financeiro', 'Financeiro e NF', 'DollarSign', 5),
+  ('clientes', 'Clientes', 'Clientes físicos, jurídicos e veículos', 'UserCircle', 2),
+  ('oficina', 'Oficina', 'Ordens de serviço e pátio', 'Wrench', 3),
+  ('estoque', 'Estoque', 'Produtos, saldos e movimentações', 'Package', 4),
+  ('financeiro', 'Financeiro', 'Contas a pagar/receber, caixa, NF', 'DollarSign', 5),
   ('contabil', 'Fiscal/Contábil', 'Exportações e DRE', 'FileText', 6),
-  ('relatorios', 'Relatórios', 'Relatórios gerais', 'BarChart3', 7),
-  ('admin', 'Administração', 'Configurações do sistema', 'Settings', 8),
+  ('relatorios', 'Relatórios', 'Relatórios de vendas, oficina, estoque', 'BarChart3', 7),
+  ('admin', 'Administração', 'Empresas, usuários, roles, configurações', 'Settings', 8),
   ('rh', 'RH', 'Funcionários e cargos', 'Users', 9)
 ON DUPLICATE KEY UPDATE label = VALUES(label), description = VALUES(description), icon = VALUES(icon), `order` = VALUES(`order`);
 
@@ -54,6 +54,28 @@ UPDATE permissions p
 INNER JOIN modules m ON m.`key` = p.module
 SET p.module_id = m.id
 WHERE p.module IS NOT NULL;
+
+-- Vincular por key (fallback quando module string ausente)
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'admin' SET p.module_id = m.id WHERE p.`key` LIKE 'admin.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'contabil' SET p.module_id = m.id WHERE p.`key` LIKE 'accounting.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'dashboard' SET p.module_id = m.id WHERE p.`key` = 'dashboard.view';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'estoque' SET p.module_id = m.id WHERE p.`key` LIKE 'stock.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'financeiro' SET p.module_id = m.id WHERE p.`key` LIKE 'finance.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'oficina' SET p.module_id = m.id WHERE p.`key` LIKE 'service_orders.%' OR p.`key` LIKE 'checklists.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'relatorios' SET p.module_id = m.id WHERE p.`key` LIKE 'reports.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'rh' SET p.module_id = m.id WHERE p.`key` LIKE 'hr.%';
+UPDATE permissions p INNER JOIN modules m ON m.`key` = 'vendas' SET p.module_id = m.id WHERE p.`key` LIKE 'sales.%' OR p.`key` IN ('commissions.read', 'reports.my_sales.read');
+
+-- Atualizar module string para consistência
+UPDATE permissions SET module = 'admin' WHERE `key` LIKE 'admin.%';
+UPDATE permissions SET module = 'contabil' WHERE `key` LIKE 'accounting.%';
+UPDATE permissions SET module = 'dashboard' WHERE `key` = 'dashboard.view';
+UPDATE permissions SET module = 'estoque' WHERE `key` LIKE 'stock.%';
+UPDATE permissions SET module = 'financeiro' WHERE `key` LIKE 'finance.%';
+UPDATE permissions SET module = 'oficina' WHERE `key` LIKE 'service_orders.%' OR `key` LIKE 'checklists.%';
+UPDATE permissions SET module = 'relatorios' WHERE `key` LIKE 'reports.%';
+UPDATE permissions SET module = 'rh' WHERE `key` LIKE 'hr.%';
+UPDATE permissions SET module = 'vendas' WHERE `key` LIKE 'sales.%' OR `key` IN ('commissions.read', 'reports.my_sales.read');
 
 -- ========== 3. MENU_ITEMS (seed completo) ==========
 SET FOREIGN_KEY_CHECKS = 0;
@@ -193,6 +215,15 @@ DELETE FROM google_mail_integrations WHERE owner_master_user_id != @keep_user;
 SET FOREIGN_KEY_CHECKS = 0;
 DELETE FROM users WHERE id != @keep_user;
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ========== 5. ROLE DEV E PERMISSÕES ==========
+INSERT INTO roles (name, description)
+VALUES ('DEV', 'Desenvolvedor - Acesso total. Única role que pode editar MASTER e configurar o sistema.')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+DELETE FROM role_permissions;
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1), id FROM permissions;
 
 -- Garantir usuário 2 = role DEV
 UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1) WHERE id = @keep_user;

@@ -189,7 +189,8 @@ export class RBACRepository {
 
   /**
    * Busca usuário com role, permissões e módulos
-   * Para roles MASTER e DEV, retorna todas as permissões e módulos (acesso total)
+   * Apenas role DEV tem acesso total (todas permissões e módulos)
+   * Demais roles: permissões e módulos derivados de role_permissions
    */
   static async getUserWithPermissions(userId) {
     const [userRows] = await db.query(
@@ -208,7 +209,7 @@ export class RBACRepository {
     let permissions;
     let modules;
 
-    if (roleName === "MASTER" || roleName === "DEV") {
+    if (roleName === "DEV") {
       permissions = await this.getAllPermissions();
       modules = await this.getAllModules();
     } else {
@@ -567,18 +568,31 @@ export class RBACRepository {
   static async getUserModules(userId) {
     try {
       const [rows] = await db.query(
-        `SELECT DISTINCT m.id, m.\`key\`, m.label, m.description
+        `SELECT DISTINCT m.id, m.\`key\`, m.label, m.description, m.icon, m.\`order\`
          FROM modules m
          INNER JOIN permissions p ON (p.module_id = m.id OR (p.module_id IS NULL AND m.\`key\` = p.module))
          INNER JOIN role_permissions rp ON rp.permission_id = p.id
          INNER JOIN users u ON rp.role_id = u.role_id
          WHERE u.id = ?
-         ORDER BY m.label`,
+         ORDER BY COALESCE(m.\`order\`, 999), m.label`,
         [userId]
       );
       return rows;
     } catch (error) {
       if (error.code === "ER_NO_SUCH_TABLE") return [];
+      if (error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          `SELECT DISTINCT m.id, m.\`key\`, m.label, m.description
+           FROM modules m
+           INNER JOIN permissions p ON (p.module_id = m.id OR (p.module_id IS NULL AND m.\`key\` = p.module))
+           INNER JOIN role_permissions rp ON rp.permission_id = p.id
+           INNER JOIN users u ON rp.role_id = u.role_id
+           WHERE u.id = ?
+           ORDER BY m.label`,
+          [userId]
+        );
+        return rows.map((r) => ({ ...r, icon: null, order: 0 }));
+      }
       throw error;
     }
   }
