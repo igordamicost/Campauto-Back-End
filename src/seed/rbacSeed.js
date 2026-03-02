@@ -20,17 +20,20 @@ export async function seedRBAC() {
       return;
     }
 
-    // Inserir módulos se a tabela existir (migration 038)
+    // Inserir módulos se a tabela existir (migration 038/042)
     try {
       await db.query(`
         INSERT IGNORE INTO modules (\`key\`, label, description) VALUES
-          ('vendas', 'Vendas', 'Módulo de vendas e orçamentos'),
-          ('oficina', 'Oficina', 'Módulo de ordens de serviço e checklists'),
-          ('estoque', 'Estoque', 'Módulo de estoque e reservas'),
-          ('financeiro', 'Financeiro', 'Módulo financeiro'),
-          ('rh', 'RH', 'Módulo de recursos humanos'),
-          ('contabil', 'Contábil', 'Módulo contábil'),
-          ('admin', 'Administração', 'Módulo de administração do sistema')
+          ('dashboard', 'Dashboard', 'Mapa do sistema e visão geral'),
+          ('vendas', 'Vendas', 'Módulo de vendas, orçamentos e pedidos'),
+          ('clientes', 'Clientes', 'Clientes físicos, jurídicos e veículos'),
+          ('oficina', 'Oficina', 'Ordens de serviço e pátio'),
+          ('estoque', 'Estoque', 'Produtos, saldos, movimentações e reservas'),
+          ('financeiro', 'Financeiro', 'Contas a receber/pagar, caixa, fluxo e NF'),
+          ('contabil', 'Fiscal/Contábil', 'Exportações e DRE'),
+          ('relatorios', 'Relatórios', 'Relatórios de vendas, oficina, estoque e financeiro'),
+          ('admin', 'Administração', 'Empresas, usuários, roles, templates e configurações'),
+          ('rh', 'RH', 'Funcionários e cargos')
       `);
     } catch (modErr) {
       if (modErr.code !== "ER_NO_SUCH_TABLE") console.warn("Seed modules:", modErr.message);
@@ -68,11 +71,14 @@ export async function seedRBAC() {
     // Inserir permissões se não existirem
     await db.query(`
       INSERT IGNORE INTO permissions (\`key\`, description, module) VALUES
+        ('dashboard.view', 'Visualizar dashboard', 'dashboard'),
         ('sales.read', 'Visualizar vendas', 'vendas'),
         ('sales.create', 'Criar vendas', 'vendas'),
         ('sales.update', 'Editar vendas', 'vendas'),
+        ('sales.delete', 'Excluir vendas/orçamentos', 'vendas'),
         ('commissions.read', 'Visualizar comissões', 'vendas'),
         ('reports.my_sales.read', 'Visualizar minhas vendas', 'vendas'),
+        ('reports.read', 'Visualizar relatórios', 'relatorios'),
         ('service_orders.read', 'Visualizar ordens de serviço', 'oficina'),
         ('service_orders.create', 'Criar ordens de serviço', 'oficina'),
         ('service_orders.update', 'Editar ordens de serviço', 'oficina'),
@@ -92,6 +98,7 @@ export async function seedRBAC() {
         ('hr.update', 'Editar registros de RH', 'rh'),
         ('accounting.read', 'Visualizar contábil', 'contabil'),
         ('accounting.export', 'Exportar dados contábeis', 'contabil'),
+        ('admin.read', 'Acesso geral à administração', 'admin'),
         ('admin.users.manage', 'Gerenciar usuários', 'admin'),
         ('admin.roles.manage', 'Gerenciar roles', 'admin'),
         ('admin.companies.manage', 'Gerenciar empresas', 'admin'),
