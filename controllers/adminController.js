@@ -1,5 +1,6 @@
 import { db } from "../src/config/database.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
+import { sendPasswordSetupEmail } from "../src/controllers/auth.controller.js";
 import bcrypt from "bcryptjs";
 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -96,15 +97,16 @@ async function getUserById(req, res) {
 }
 
 /**
- * Cria usuário
+ * Cria usuário.
+ * Senha não é obrigatória: se omitida, envia email com link para definir senha (válido 7 dias).
  */
 async function createUser(req, res) {
   try {
     const { name, email, password, role_id, empresa_id, cpf, telefone } = req.body;
 
-    if (!name || !email || !password || !role_id) {
+    if (!name || !email || !role_id) {
       return res.status(400).json({
-        message: "Campos obrigatórios: name, email, password, role_id",
+        message: "Campos obrigatórios: name, email, role_id",
       });
     }
 
@@ -118,24 +120,62 @@ async function createUser(req, res) {
       return res.status(400).json({ message: "Email já cadastrado" });
     }
 
-    // Hash da senha
-    const passwordHash = await bcrypt.hash(password, 12);
+    // Senha opcional: se fornecida, usar; senão criar sem senha e enviar email
+    let passwordHash = null;
+    let mustSetPassword = 1;
 
-    // Criar usuário
+    if (password && String(password).trim() !== "") {
+      passwordHash = await bcrypt.hash(password, 12);
+      mustSetPassword = 0;
+    }
+
+    // Criar usuário (password NULL quando must_set_password)
     const [result] = await db.query(
-      `INSERT INTO users (name, email, password, role_id, empresa_id, cpf, telefone)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, email, passwordHash, role_id, empresa_id != null ? Number(empresa_id) : null, cpf || null, telefone || null]
+      `INSERT INTO users (name, email, password, role_id, empresa_id, cpf, telefone, must_set_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        email,
+        passwordHash,
+        role_id,
+        empresa_id != null ? Number(empresa_id) : null,
+        cpf || null,
+        telefone || null,
+        mustSetPassword,
+      ]
     );
+
+    const userId = result.insertId;
+
+    // Se sem senha: enviar email com link para definir (mesmo fluxo de "esqueci minha senha")
+    if (mustSetPassword === 1) {
+      try {
+        await sendPasswordSetupEmail(userId, email, name, {
+          templateKey: "FIRST_ACCESS",
+          empresaId: empresa_id != null ? Number(empresa_id) : null,
+          expiresInHours: 24 * 7, // 7 dias
+        });
+      } catch (emailErr) {
+        console.error("[createUser] Erro ao enviar email de boas-vindas:", emailErr);
+        return res.status(201).json({
+          id: userId,
+          name,
+          email,
+          role_id,
+          empresa_id: empresa_id != null ? Number(empresa_id) : null,
+          message: "Usuário criado, mas falha ao enviar e-mail. O usuário pode solicitar novo link em 'Esqueci minha senha'.",
+        });
+      }
+    }
 
     // Buscar usuário criado
     const [newUserRows] = await db.query(
-      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.empresa_id, u.blocked, u.created_at,
+      `SELECT u.id, u.name, u.email, u.cpf, u.telefone, u.role_id, u.empresa_id, u.blocked, u.must_set_password, u.created_at,
               r.name AS role_name, r.description AS role_description
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
        WHERE u.id = ?`,
-      [result.insertId]
+      [userId]
     );
 
     const newUser = newUserRows[0];
@@ -145,6 +185,7 @@ async function createUser(req, res) {
       ...newUser,
       permissions: permissions.map((p) => p.key),
       permissionsDetail: permissions,
+      message: mustSetPassword === 1 ? "Usuário criado. E-mail enviado para definir senha." : "Usuário criado com sucesso.",
     });
   } catch (error) {
     console.error("Error creating user:", error);

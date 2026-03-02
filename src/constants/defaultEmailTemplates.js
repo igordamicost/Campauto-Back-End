@@ -9,7 +9,7 @@
 
 export const DEFAULT_FIRST_ACCESS = {
   name: "Primeiro acesso - Padrão",
-  subject: "Defina sua senha",
+  subject: "Bem-vindo ao sistema - Defina sua senha de acesso",
   html_body: `
 <!DOCTYPE html>
 <html>

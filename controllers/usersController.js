@@ -1,9 +1,6 @@
 import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
-import { createPasswordToken } from "../src/services/passwordTokenService.js";
-import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services/email.service.js";
-import { loadLogo } from "../src/services/logoLoader.js";
-import { getTemplate, renderWithData } from "../src/services/templateService.js";
+import { sendPasswordSetupEmail } from "../src/controllers/auth.controller.js";
 
 /** Role MASTER tem id 1 - empresa_id opcional. Outras roles exigem empresa. */
 function isMasterRoleId(roleId) {
@@ -17,28 +14,6 @@ async function ensureEmpresaExists(connectionOrPool, empresaId) {
     [Number(empresaId)]
   );
   return rows.length > 0;
-}
-
-function buildEmpresaContextFromRow(row) {
-  if (!row) return { companyName: null, companyLogo: null, empresa: null };
-  const empresaNome =
-    row.nome_fantasia || row.razao_social || process.env.COMPANY_NAME || "Campauto";
-  const companyLogo = row.logo_url && typeof row.logo_url === "string" ? row.logo_url.trim() : null;
-
-  return {
-    companyName: empresaNome,
-    companyLogo,
-    empresa: {
-      id: row.id,
-      nome_fantasia: row.nome_fantasia,
-      razao_social: row.razao_social,
-      cnpj: row.cnpj,
-      endereco: row.endereco,
-      cidade: row.cidade,
-      estado: row.estado,
-      telefone: row.telefone,
-    },
-  };
 }
 
 async function list(req, res) {
@@ -261,54 +236,14 @@ async function createUser(req, res) {
     connection.release();
   }
 
-  // Se senha não foi fornecida, enviar email para definir senha
+  // Se senha não foi fornecida, enviar email para definir senha (link /recuperar-senha, válido 7 dias)
   if (mustSetPassword === 1) {
     try {
-      const token = await createPasswordToken(userId, "FIRST_ACCESS");
-      const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
-      const link = `${baseUrl}/definir-senha?token=${token}`;
-      const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
-
-      let empresaContext = {
-        companyName: defaultCompanyName,
-        companyLogo: null,
-      };
-
-      if (req.user?.userId) {
-        try {
-          const [rowsEmpresa] = await pool.query(
-            `
-              SELECT e.id, e.nome_fantasia, e.razao_social, e.cnpj,
-                     e.endereco, e.cidade, e.estado, e.telefone, e.logo_url
-              FROM users u
-              LEFT JOIN empresas e ON e.id = u.empresa_id
-              WHERE u.id = ?
-            `,
-            [req.user.userId]
-          );
-          if (rowsEmpresa[0]) {
-            empresaContext = buildEmpresaContextFromRow(rowsEmpresa[0]);
-          }
-        } catch (ctxErr) {
-          console.warn("Falha ao carregar empresa do usuário para FIRST_ACCESS:", ctxErr.message);
-        }
-      }
-
-      const logoUrl = empresaContext.companyLogo;
-      const logoAttachment = await loadLogo({ logoUrl });
-
-      const template = await getTemplate(req.user?.userId, "FIRST_ACCESS");
-      const { subject, html } = renderWithData(template, {
-        user_name: name,
-        user_email: email,
-        action_url: link,
-        token_expires_in: "1 hora",
-        company_name: empresaContext.companyName,
-        company_logo: logoAttachment ? "cid:company-logo" : "",
-        company_header_html: buildCompanyHeaderHtml(empresaContext.companyName, !!logoAttachment),
+      await sendPasswordSetupEmail(userId, email, name, {
+        templateKey: "FIRST_ACCESS",
+        empresaId: finalEmpresaId,
+        expiresInHours: 24 * 7,
       });
-
-      await sendEmailWithInlineLogo(email, subject, html, { logoAttachment });
     } catch (err) {
       return res.status(201).json({
         id: userId,

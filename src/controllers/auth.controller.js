@@ -30,6 +30,61 @@ function validatePassword(pwd) {
 }
 
 /**
+ * Envia email com link para definir/redefinir senha.
+ * Reutilizado por forgot-password e cadastro de novo usuário.
+ * @param {number} userId
+ * @param {string} email
+ * @param {string} userName
+ * @param {{ templateKey?: 'FIRST_ACCESS'|'RESET', empresaId?: number, expiresInHours?: number }} options
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+export async function sendPasswordSetupEmail(userId, email, userName, options = {}) {
+  const {
+    templateKey = "RESET",
+    empresaId = null,
+    expiresInHours = templateKey === "FIRST_ACCESS" ? 24 * 7 : 1,
+  } = options;
+
+  const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
+  const token = await createPasswordToken(userId, templateKey, expiresInHours);
+  const link = `${baseUrl}/recuperar-senha?token=${token}`;
+
+  let empresaNome = process.env.COMPANY_NAME || "Campauto";
+  let logoUrl = null;
+
+  if (empresaId) {
+    const [empRows] = await db.query(
+      "SELECT nome_fantasia, razao_social, logo_url FROM empresas WHERE id = ?",
+      [empresaId]
+    );
+    if (empRows[0]) {
+      empresaNome = empRows[0].nome_fantasia || empRows[0].razao_social || empresaNome;
+      logoUrl = empRows[0].logo_url?.trim() || null;
+    }
+  }
+
+  const logoAttachment = await loadLogo({ logoUrl });
+  const tokenExpiresIn =
+    expiresInHours >= 24
+      ? `${Math.floor(expiresInHours / 24)} dias`
+      : `${expiresInHours} hora${expiresInHours > 1 ? "s" : ""}`;
+
+  const template = await getTemplate(null, templateKey);
+  const { subject, html } = renderWithData(template, {
+    user_name: userName,
+    user_email: email,
+    action_url: link,
+    token_expires_in: tokenExpiresIn,
+    company_name: empresaNome,
+    company_logo: logoAttachment ? "cid:company-logo" : "",
+    company_header_html: buildCompanyHeaderHtml(empresaNome, !!logoAttachment),
+  });
+
+  await sendEmailWithInlineLogo(email, subject, html, { logoAttachment });
+  return { ok: true };
+}
+
+/**
  * Forgot-password: sempre responde 200 com mensagem genérica.
  * Rate limit aplicado na rota.
  */
@@ -78,53 +133,29 @@ export async function forgotPassword(req, res) {
   }
 
   const user = rows[0];
+  const roleId = user.role_id;
+  const isMaster = isMasterRoleId(roleId);
+
+  // Regra: usuários não-master precisam ter empresa vinculada para enviar e-mail de reset
+  if (!isMaster && !user.empresa_id) {
+    return res.status(200).json({
+      ...genericMessage,
+      debug: "NON_MASTER_NO_EMPRESA",
+    });
+  }
 
   try {
-    const token = await createPasswordToken(user.id, "RESET");
-    const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
     if (process.env.NODE_ENV === "production" && !process.env.FRONT_URL) {
       console.warn("[forgotPassword] FRONT_URL não definido em produção; link de reset pode apontar para localhost.");
     }
-    const link = `${baseUrl}/recuperar-senha?token=${token}`;
-    const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
-
-    const roleId = user.role_id;
-    const isMaster = isMasterRoleId(roleId);
-
-    // Regra: usuários não-master precisam ter empresa vinculada para enviar e-mail de reset
-    if (!isMaster && !user.empresa_id) {
-      // Não envia e-mail, mas mantém resposta genérica
-      return res.status(200).json({
-        ...genericMessage,
-        debug: "NON_MASTER_NO_EMPRESA",
-      });
-    }
-
-    const empresaNome =
-      user.nome_fantasia || user.razao_social || defaultCompanyName;
-    const logoUrl = user.logo_url && typeof user.logo_url === "string" ? user.logo_url.trim() : null;
-    const logoAttachment = await loadLogo({ logoUrl });
-    const userName = user.name || "";
-
-    const template = await getTemplate(null, "RESET");
-    const { subject, html } = renderWithData(template, {
-      user_name: userName,
-      user_email: email.trim(),
-      action_url: link,
-      token_expires_in: "1 hora",
-      company_name: empresaNome,
-      company_logo: logoAttachment ? "cid:company-logo" : "",
-      company_header_html: buildCompanyHeaderHtml(empresaNome, !!logoAttachment),
+    await sendPasswordSetupEmail(user.id, email.trim(), user.name || "", {
+      templateKey: "RESET",
+      empresaId: user.empresa_id,
+      expiresInHours: 1,
     });
-
-    console.log("[forgotPassword] Enviando e-mail de reset para", email.trim());
-    await sendEmailWithInlineLogo(email.trim(), subject, html, { logoAttachment });
-    console.log("[forgotPassword] E-mail de reset enviado (sem erro aparente)");
+    console.log("[forgotPassword] E-mail de reset enviado para", email.trim());
   } catch (err) {
-    console.error(
-      "[forgotPassword] Erro ao enviar e-mail de recuperação:",
-      err?.message || err
-    );
+    console.error("[forgotPassword] Erro ao enviar e-mail:", err?.message || err);
     return res.status(200).json({
       ...genericMessage,
       debug: "EMAIL_SEND_ERROR",
