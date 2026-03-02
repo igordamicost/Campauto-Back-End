@@ -26,34 +26,69 @@ export class RBACRepository {
   }
 
   /**
-   * Busca permissões de uma role
+   * Busca permissões de uma role (com info de módulo)
    */
   static async getRolePermissions(roleId) {
-    const [rows] = await db.query(
-      `SELECT p.id, p.\`key\`, p.description, p.module
-       FROM permissions p
-       INNER JOIN role_permissions rp ON p.id = rp.permission_id
-       WHERE rp.role_id = ?
-       ORDER BY p.module, p.\`key\``,
-      [roleId]
-    );
-    return rows;
+    try {
+      const [rows] = await db.query(
+        `SELECT p.id, p.\`key\`, p.description, p.module, p.module_id,
+                COALESCE(m.\`key\`, p.module) AS module_key
+         FROM permissions p
+         INNER JOIN role_permissions rp ON p.id = rp.permission_id
+         LEFT JOIN modules m ON p.module_id = m.id
+         WHERE rp.role_id = ?
+         ORDER BY COALESCE(m.label, p.module), p.\`key\``,
+        [roleId]
+      );
+      return rows;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE" || error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          `SELECT p.id, p.\`key\`, p.description, p.module
+           FROM permissions p
+           INNER JOIN role_permissions rp ON p.id = rp.permission_id
+           WHERE rp.role_id = ?
+           ORDER BY p.module, p.\`key\``,
+          [roleId]
+        );
+        return rows.map((r) => ({ ...r, module_id: null, module_key: r.module }));
+      }
+      throw error;
+    }
   }
 
   /**
-   * Busca permissões de um usuário (via role)
+   * Busca permissões de um usuário (via role, com info de módulo)
    */
   static async getUserPermissions(userId) {
-    const [rows] = await db.query(
-      `SELECT DISTINCT p.id, p.\`key\`, p.description, p.module
-       FROM permissions p
-       INNER JOIN role_permissions rp ON p.id = rp.permission_id
-       INNER JOIN users u ON rp.role_id = u.role_id
-       WHERE u.id = ?
-       ORDER BY p.module, p.\`key\``,
-      [userId]
-    );
-    return rows;
+    try {
+      const [rows] = await db.query(
+        `SELECT DISTINCT p.id, p.\`key\`, p.description, p.module, p.module_id,
+                COALESCE(m.\`key\`, p.module) AS module_key
+         FROM permissions p
+         INNER JOIN role_permissions rp ON p.id = rp.permission_id
+         INNER JOIN users u ON rp.role_id = u.role_id
+         LEFT JOIN modules m ON p.module_id = m.id
+         WHERE u.id = ?
+         ORDER BY COALESCE(m.label, p.module), p.\`key\``,
+        [userId]
+      );
+      return rows;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE" || error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          `SELECT DISTINCT p.id, p.\`key\`, p.description, p.module
+           FROM permissions p
+           INNER JOIN role_permissions rp ON p.id = rp.permission_id
+           INNER JOIN users u ON rp.role_id = u.role_id
+           WHERE u.id = ?
+           ORDER BY p.module, p.\`key\``,
+          [userId]
+        );
+        return rows.map((r) => ({ ...r, module_id: null, module_key: r.module }));
+      }
+      throw error;
+    }
   }
 
   /**
@@ -86,21 +121,37 @@ export class RBACRepository {
   }
 
   /**
-   * Lista todas as permissões
+   * Lista todas as permissões (filtro por module_id ou module string)
    */
-  static async getAllPermissions(module = null) {
-    let query = "SELECT id, `key`, description, module, created_at FROM permissions";
-    const params = [];
-    
-    if (module) {
-      query += " WHERE module = ?";
-      params.push(module);
+  static async getAllPermissions(moduleFilter = null, moduleIdFilter = null) {
+    try {
+      let query = `SELECT p.id, p.\`key\`, p.description, p.module, p.module_id,
+                          COALESCE(m.\`key\`, p.module) AS module_key
+                   FROM permissions p
+                   LEFT JOIN modules m ON p.module_id = m.id`;
+      const params = [];
+
+      if (moduleIdFilter != null) {
+        query += " WHERE p.module_id = ?";
+        params.push(moduleIdFilter);
+      } else if (moduleFilter) {
+        query += " WHERE (p.module = ? OR m.`key` = ?)";
+        params.push(moduleFilter, moduleFilter);
+      }
+
+      query += " ORDER BY COALESCE(m.label, p.module), p.`key`";
+
+      const [rows] = await db.query(query, params);
+      return rows;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE" || error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          "SELECT id, `key`, description, module, created_at FROM permissions ORDER BY module, `key`"
+        );
+        return rows.map((r) => ({ ...r, module_id: null, module_key: r.module }));
+      }
+      throw error;
     }
-    
-    query += " ORDER BY module, `key`";
-    
-    const [rows] = await db.query(query, params);
-    return rows;
   }
 
   /**
@@ -137,8 +188,8 @@ export class RBACRepository {
   }
 
   /**
-   * Busca usuário com role e permissões
-   * Para role DEV, retorna todas as permissões existentes (acesso total)
+   * Busca usuário com role, permissões e módulos
+   * Para roles MASTER e DEV, retorna todas as permissões e módulos (acesso total)
    */
   static async getUserWithPermissions(userId) {
     const [userRows] = await db.query(
@@ -154,18 +205,28 @@ export class RBACRepository {
     const user = userRows[0];
     const roleName = String(user.role_name || "").toUpperCase();
 
-    // Role DEV tem acesso total - retornar todas as permissões
     let permissions;
-    if (roleName === "DEV") {
+    let modules;
+
+    if (roleName === "MASTER" || roleName === "DEV") {
       permissions = await this.getAllPermissions();
+      modules = await this.getAllModules();
     } else {
       permissions = await this.getUserPermissions(userId);
+      modules = await this.getUserModules(userId);
     }
 
     return {
       ...user,
       permissions: permissions.map((p) => p.key),
-      permissionsDetail: permissions,
+      permissionsDetail: permissions.map((p) => ({
+        id: p.id,
+        key: p.key,
+        description: p.description,
+        module: p.module_key || p.module,
+        module_id: p.module_id,
+      })),
+      modules,
     };
   }
 
@@ -238,26 +299,51 @@ export class RBACRepository {
   }
 
   /**
-   * Cria uma nova permissão
+   * Cria uma nova permissão (aceita module_id ou module string)
    */
-  static async createPermission(key, description, module) {
+  static async createPermission(key, description, moduleOrModuleId) {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
 
-      const [result] = await connection.query(
-        "INSERT INTO permissions (`key`, description, module) VALUES (?, ?, ?)",
-        [key.trim(), description?.trim() || null, module?.trim() || null]
-      );
+      let moduleId = null;
+      let moduleStr = null;
+      if (moduleOrModuleId != null) {
+        if (typeof moduleOrModuleId === "number" || /^\d+$/.test(String(moduleOrModuleId))) {
+          moduleId = Number(moduleOrModuleId);
+        } else {
+          moduleStr = String(moduleOrModuleId).trim();
+          try {
+            const mod = await this.getModuleByKey(moduleStr);
+            if (mod) moduleId = mod.id;
+          } catch {
+            // modules table pode não existir
+          }
+        }
+      }
+
+      let insertId;
+      try {
+        const [result] = await connection.query(
+          "INSERT INTO permissions (`key`, description, module, module_id) VALUES (?, ?, ?, ?)",
+          [key.trim(), description?.trim() || null, moduleStr, moduleId]
+        );
+        insertId = result.insertId;
+      } catch (insertErr) {
+        if (insertErr.code === "ER_BAD_FIELD_ERROR") {
+          const [result] = await connection.query(
+            "INSERT INTO permissions (`key`, description, module) VALUES (?, ?, ?)",
+            [key.trim(), description?.trim() || null, moduleStr]
+          );
+          insertId = result.insertId;
+        } else {
+          throw insertErr;
+        }
+      }
 
       await connection.commit();
 
-      const [rows] = await db.query(
-        "SELECT id, `key`, description, module, created_at FROM permissions WHERE id = ?",
-        [result.insertId]
-      );
-
-      return rows[0];
+      return await this.getPermissionById(insertId);
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -337,19 +423,156 @@ export class RBACRepository {
     return role && role.name === "MASTER";
   }
 
+  // ========== MÓDULOS ==========
+
   /**
-   * Busca permissão por ID
+   * Lista todos os módulos
    */
-  static async getPermissionById(permissionId) {
+  static async getAllModules() {
+    try {
+      const [rows] = await db.query(
+        "SELECT id, `key`, label, description, created_at, updated_at FROM modules ORDER BY label"
+      );
+      return rows;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE") return [];
+      throw error;
+    }
+  }
+
+  /**
+   * Busca módulo por ID
+   */
+  static async getModuleById(moduleId) {
     const [rows] = await db.query(
-      "SELECT id, `key`, description, module, created_at FROM permissions WHERE id = ?",
-      [permissionId]
+      "SELECT id, `key`, label, description, created_at, updated_at FROM modules WHERE id = ?",
+      [moduleId]
     );
     return rows[0] || null;
   }
 
   /**
-   * Atualiza uma permissão
+   * Busca módulo por key
+   */
+  static async getModuleByKey(key) {
+    const [rows] = await db.query(
+      "SELECT id, `key`, label, description FROM modules WHERE `key` = ?",
+      [key?.trim()?.toLowerCase()]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Verifica se módulo com key existe
+   */
+  static async moduleKeyExists(key, excludeId = null) {
+    let query = "SELECT id FROM modules WHERE `key` = ?";
+    const params = [key?.trim()?.toLowerCase()];
+    if (excludeId) {
+      query += " AND id != ?";
+      params.push(excludeId);
+    }
+    const [rows] = await db.query(query, params);
+    return rows.length > 0;
+  }
+
+  /**
+   * Cria módulo
+   */
+  static async createModule(key, label, description = null) {
+    const [result] = await db.query(
+      "INSERT INTO modules (`key`, label, description) VALUES (?, ?, ?)",
+      [key?.trim()?.toLowerCase(), label?.trim(), description?.trim() || null]
+    );
+    return await this.getModuleById(result.insertId);
+  }
+
+  /**
+   * Atualiza módulo
+   */
+  static async updateModule(moduleId, updates) {
+    const updateFields = [];
+    const params = [];
+    if (updates.key !== undefined) {
+      updateFields.push("`key` = ?");
+      params.push(updates.key?.trim()?.toLowerCase());
+    }
+    if (updates.label !== undefined) {
+      updateFields.push("label = ?");
+      params.push(updates.label?.trim());
+    }
+    if (updates.description !== undefined) {
+      updateFields.push("description = ?");
+      params.push(updates.description?.trim() || null);
+    }
+    if (updateFields.length === 0) return await this.getModuleById(moduleId);
+    params.push(moduleId);
+    await db.query(
+      `UPDATE modules SET ${updateFields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      params
+    );
+    return await this.getModuleById(moduleId);
+  }
+
+  /**
+   * Exclui módulo
+   */
+  static async deleteModule(moduleId) {
+    await db.query("DELETE FROM modules WHERE id = ?", [moduleId]);
+    return true;
+  }
+
+  /**
+   * Busca módulos que o usuário tem permissão de acessar (derivado das permissões da role)
+   */
+  static async getUserModules(userId) {
+    try {
+      const [rows] = await db.query(
+        `SELECT DISTINCT m.id, m.\`key\`, m.label, m.description
+         FROM modules m
+         INNER JOIN permissions p ON p.module_id = m.id
+         INNER JOIN role_permissions rp ON rp.permission_id = p.id
+         INNER JOIN users u ON rp.role_id = u.role_id
+         WHERE u.id = ?
+         ORDER BY m.label`,
+        [userId]
+      );
+      return rows;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE") return [];
+      throw error;
+    }
+  }
+
+  /**
+   * Busca permissão por ID (com module_key)
+   */
+  static async getPermissionById(permissionId) {
+    try {
+      const [rows] = await db.query(
+        `SELECT p.id, p.\`key\`, p.description, p.module, p.module_id,
+                COALESCE(m.\`key\`, p.module) AS module_key
+         FROM permissions p
+         LEFT JOIN modules m ON p.module_id = m.id
+         WHERE p.id = ?`,
+        [permissionId]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      if (error.code === "ER_NO_SUCH_TABLE" || error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          "SELECT id, `key`, description, module FROM permissions WHERE id = ?",
+          [permissionId]
+        );
+        const r = rows[0];
+        return r ? { ...r, module_id: null, module_key: r.module } : null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza uma permissão (aceita module_id ou module string)
    */
   static async updatePermission(permissionId, updates) {
     const updateFields = [];
@@ -363,7 +586,18 @@ export class RBACRepository {
       updateFields.push("description = ?");
       params.push(updates.description?.trim() || null);
     }
+    if (updates.endpoint_pattern !== undefined) {
+      updateFields.push("endpoint_pattern = ?");
+      params.push(updates.endpoint_pattern?.trim() || null);
+    }
+    if (updates.module_id !== undefined) {
+      updateFields.push("module_id = ?");
+      params.push(updates.module_id != null ? Number(updates.module_id) : null);
+    }
     if (updates.module !== undefined) {
+      const mod = await this.getModuleByKey(updates.module);
+      updateFields.push("module_id = ?");
+      params.push(mod ? mod.id : null);
       updateFields.push("module = ?");
       params.push(updates.module?.trim() || null);
     }

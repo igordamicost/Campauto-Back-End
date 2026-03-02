@@ -140,34 +140,53 @@
  * @openapi
  * /auth/me:
  *   get:
- *     summary: Obter dados do usuário logado com permissões
+ *     summary: Obter dados do usuário logado com permissões e módulos
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Dados do usuário com role e permissões
+ *         description: Dados do usuário com role, módulos e permissões
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 id:
- *                   type: integer
- *                 name:
- *                   type: string
- *                 email:
- *                   type: string
- *                 role:
+ *                 user:
  *                   type: object
  *                   properties:
  *                     id:
  *                       type: integer
  *                     name:
  *                       type: string
- *                       enum: [MASTER, ADMIN, USER, ALMOX, CONTAB]
- *                     description:
+ *                     email:
  *                       type: string
+ *                     role:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                           enum: [MASTER, ADMIN, USER, ALMOX, CONTAB, DEV]
+ *                         description:
+ *                           type: string
+ *                 modules:
+ *                   type: array
+ *                   description: Módulos que o usuário tem permissão de acessar
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       key:
+ *                         type: string
+ *                         example: vendas
+ *                       label:
+ *                         type: string
+ *                         example: Vendas
+ *                       description:
+ *                         type: string
  *                 permissions:
  *                   type: array
  *                   items:
@@ -186,6 +205,8 @@
  *                         type: string
  *                       module:
  *                         type: string
+ *                       module_id:
+ *                         type: integer
  *       401:
  *         description: Token inválido ou expirado
  *       404:

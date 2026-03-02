@@ -5,6 +5,7 @@ import { importAllCsv } from "./importCsv.js";
 import { seedMasterUser } from "./src/seed/masterUser.js";
 import { seedEmailTemplates } from "./src/seed/emailTemplatesSeed.js";
 import { seedRBAC } from "./src/seed/rbacSeed.js";
+import { seedMenu } from "./src/seed/menuSeed.js";
 import { verifyDbConnection } from "./src/config/database.js";
 import { verifyEmailConnection } from "./src/config/email.js";
 import { ReservationSchedulerService } from "./src/services/reservationScheduler.service.js";
@@ -23,6 +24,7 @@ async function bootstrap() {
   await verifyEmailConnection();
   await seedMasterUser();
   await seedRBAC();
+  await seedMenu();
   await seedEmailTemplates();
   await importAllCsv();
 

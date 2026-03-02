@@ -77,16 +77,18 @@ async function getMe(req, res) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
-    // Formatar resposta
     const response = {
-      id: userWithPermissions.id,
-      name: userWithPermissions.name,
-      email: userWithPermissions.email,
-      role: {
-        id: userWithPermissions.role_id,
-        name: userWithPermissions.role_name,
-        description: userWithPermissions.role_description,
+      user: {
+        id: userWithPermissions.id,
+        name: userWithPermissions.name,
+        email: userWithPermissions.email,
+        role: {
+          id: userWithPermissions.role_id,
+          name: userWithPermissions.role_name,
+          description: userWithPermissions.role_description,
+        },
       },
+      modules: userWithPermissions.modules || [],
       permissions: userWithPermissions.permissions,
       permissionsDetail: userWithPermissions.permissionsDetail,
     };

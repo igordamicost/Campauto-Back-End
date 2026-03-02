@@ -31,6 +31,7 @@ const swaggerDefinition = {
     { name: "Financeiro", description: "Contas a pagar/receber, caixa" },
     { name: "Oficina", description: "Ordens de serviço, pátio" },
     { name: "Admin", description: "Serviços, elevadores, usuários, roles" },
+    { name: "Menu", description: "Menu dinâmico do usuário" },
     { name: "Comissões", description: "Comissões" },
     { name: "Notificações", description: "Notificações" },
     { name: "Veículos", description: "Veículos" },

@@ -178,6 +178,157 @@
 
 /**
  * @openapi
+ * /admin/modules:
+ *   get:
+ *     summary: Lista todos os módulos (requer admin.roles.manage)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de módulos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       key:
+ *                         type: string
+ *                         example: vendas
+ *                       label:
+ *                         type: string
+ *                         example: Vendas
+ *                       description:
+ *                         type: string
+ *       403:
+ *         description: Sem permissão admin.roles.manage
+ */
+
+/**
+ * @openapi
+ * /admin/modules/{id}:
+ *   get:
+ *     summary: Busca módulo por ID
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Módulo encontrado
+ *       404:
+ *         description: Módulo não encontrado
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /admin/modules:
+ *   post:
+ *     summary: Cria módulo (requer admin.roles.manage)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [key, label]
+ *             properties:
+ *               key:
+ *                 type: string
+ *                 example: vendas
+ *               label:
+ *                 type: string
+ *                 example: Vendas
+ *               description:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Módulo criado
+ *       400:
+ *         description: Dados inválidos
+ *       409:
+ *         description: Módulo com esta key já existe
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /admin/modules/{id}:
+ *   put:
+ *     summary: Atualiza módulo
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               key:
+ *                 type: string
+ *               label:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Módulo atualizado
+ *       404:
+ *         description: Módulo não encontrado
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /admin/modules/{id}:
+ *   delete:
+ *     summary: Exclui módulo
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Módulo excluído
+ *       404:
+ *         description: Módulo não encontrado
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
  * /admin/roles:
  *   get:
  *     summary: Lista todas as roles (requer admin.roles.manage)
@@ -216,6 +367,17 @@
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: module
+ *         schema:
+ *           type: string
+ *         description: Filtro por key do módulo (ex: vendas)
+ *       - in: query
+ *         name: module_id
+ *         schema:
+ *           type: integer
+ *         description: Filtro por ID do módulo
  *     responses:
  *       200:
  *         description: Lista de permissões

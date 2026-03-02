@@ -15,9 +15,9 @@ export function requirePermission(permissionKeys) {
 
       const userId = req.user.userId;
 
-      // Usuários MASTER e DEV têm acesso total (bypass de verificação de permissões)
+      // Apenas DEV tem bypass total (acesso sem verificação de permissões)
       const roleName = String(req.user.role || "").toUpperCase();
-      if (req.user.roleId === 1 || roleName === "MASTER" || roleName === "DEV") {
+      if (roleName === "DEV") {
         return next();
       }
 
@@ -90,3 +90,8 @@ export const requireMaster = requireRole("MASTER");
  * Middleware que verifica se o usuário é ADMIN, MASTER ou DEV
  */
 export const requireAdmin = requireRole(["ADMIN", "MASTER", "DEV"]);
+
+/**
+ * Middleware que exige role DEV (apenas desenvolvedores)
+ */
+export const requireDev = requireRole("DEV");

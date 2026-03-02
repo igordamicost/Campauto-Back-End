@@ -1,9 +1,10 @@
 import express from "express";
 import adminController from "../controllers/adminController.js";
+import menuController from "../controllers/menuController.js";
 import * as servicosController from "../controllers/servicosController.js";
 import * as elevadoresController from "../controllers/elevadoresController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
-import { requirePermission } from "../src/middlewares/permissions.js";
+import { requirePermission, requireDev } from "../src/middlewares/permissions.js";
 
 const router = express.Router();
 const asyncHandler = (fn) => (req, res, next) =>
@@ -37,6 +38,19 @@ router.get("/users/:id", adminController.getUserById);
 router.post("/users", adminController.createUser);
 router.put("/users/:id", adminController.updateUser);
 router.delete("/users/:id", adminController.deleteUser);
+
+// Menu (apenas DEV)
+router.get("/menu", requireDev, menuController.listAdminMenu);
+router.post("/menu", requireDev, menuController.createMenuItem);
+router.put("/menu/:id", requireDev, menuController.updateMenuItem);
+router.delete("/menu/:id", requireDev, menuController.deleteMenuItem);
+
+// Módulos (requer admin.roles.manage)
+router.get("/modules", requirePermission("admin.roles.manage"), adminController.listModules);
+router.get("/modules/:id", requirePermission("admin.roles.manage"), adminController.getModuleById);
+router.post("/modules", requirePermission("admin.roles.manage"), adminController.createModule);
+router.put("/modules/:id", requirePermission("admin.roles.manage"), adminController.updateModule);
+router.delete("/modules/:id", requirePermission("admin.roles.manage"), adminController.deleteModule);
 
 // Roles e Permissões (requer permissão específica)
 router.get("/roles", requirePermission("admin.roles.manage"), adminController.listRoles);

@@ -30,6 +30,7 @@ import financeiroRoutes from "./routes/financeiro.js";
 import cotacoesCompraRoutes from "./routes/cotacoesCompra.js";
 import fornecedoresRoutes from "./routes/fornecedores.js";
 import pedidosCompraRoutes from "./routes/pedidosCompra.js";
+import menuRoutes from "./routes/menu.js";
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.get("/metrics", async (req, res) => {
 
 app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
+app.use("/menu", menuRoutes);
 app.use("/clientes", clientesRoutes);
 app.use("/produtos", produtosRoutes);
 app.use("/users", usersRoutes);

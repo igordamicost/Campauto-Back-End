@@ -20,6 +20,34 @@ export async function seedRBAC() {
       return;
     }
 
+    // Inserir módulos se a tabela existir (migration 038)
+    try {
+      await db.query(`
+        INSERT IGNORE INTO modules (\`key\`, label, description) VALUES
+          ('vendas', 'Vendas', 'Módulo de vendas e orçamentos'),
+          ('oficina', 'Oficina', 'Módulo de ordens de serviço e checklists'),
+          ('estoque', 'Estoque', 'Módulo de estoque e reservas'),
+          ('financeiro', 'Financeiro', 'Módulo financeiro'),
+          ('rh', 'RH', 'Módulo de recursos humanos'),
+          ('contabil', 'Contábil', 'Módulo contábil'),
+          ('admin', 'Administração', 'Módulo de administração do sistema')
+      `);
+    } catch (modErr) {
+      if (modErr.code !== "ER_NO_SUCH_TABLE") console.warn("Seed modules:", modErr.message);
+    }
+    try {
+      await db.query(`
+        UPDATE permissions p
+        INNER JOIN modules m ON m.\`key\` = p.module
+        SET p.module_id = m.id
+        WHERE p.module_id IS NULL AND p.module IS NOT NULL
+      `);
+    } catch (updErr) {
+      if (updErr.code !== "ER_NO_SUCH_TABLE" && updErr.code !== "ER_BAD_FIELD_ERROR") {
+        console.warn("Seed permissions module_id:", updErr.message);
+      }
+    }
+
     // Inserir roles se não existirem
     await db.query(`
       INSERT IGNORE INTO roles (id, name, description) VALUES
@@ -33,7 +61,7 @@ export async function seedRBAC() {
     // Inserir role DEV (por nome, para funcionar em qualquer ambiente)
     await db.query(`
       INSERT INTO roles (name, description)
-      VALUES ('DEV', 'Desenvolvedor - Acesso total para configuração do sistema')
+      VALUES ('DEV', 'Desenvolvedor - Acesso total. Única role que pode editar MASTER e configurar o sistema.')
       ON DUPLICATE KEY UPDATE description = VALUES(description)
     `);
 
@@ -79,22 +107,15 @@ export async function seedRBAC() {
       permMap[p.key] = p.id;
     });
 
-    // Atribuir permissões ao MASTER (todas)
-    if (permissions.length > 0) {
-      const masterPerms = permissions.map((p) => [1, p.id]);
-      await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [masterPerms]
-      );
-    }
+    // Política: apenas DEV tem permissões. Demais roles iniciam sem acesso.
+    await db.query("DELETE FROM role_permissions");
 
-    // Atribuir permissões ao DEV (todas, como MASTER)
     const [devRole] = await db.query("SELECT id FROM roles WHERE name = 'DEV' LIMIT 1");
     if (devRole.length > 0 && permissions.length > 0) {
       const devId = devRole[0].id;
       const devPerms = permissions.map((p) => [devId, p.id]);
       await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
+        `INSERT INTO role_permissions (role_id, permission_id) VALUES ?`,
         [devPerms]
       );
     }
@@ -106,74 +127,6 @@ export async function seedRBAC() {
       if (devRow.length > 0) {
         await db.query("UPDATE users SET role_id = ? WHERE id = 2", [devRow[0].id]);
       }
-    }
-
-    // Atribuir permissões ao ADMIN (todas exceto admin.users.manage)
-    const adminPerms = permissions
-      .filter((p) => p.key !== "admin.users.manage")
-      .map((p) => [2, p.id]);
-    if (adminPerms.length > 0) {
-      await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [adminPerms]
-      );
-    }
-
-    // Atribuir permissões ao USER
-    const userPermKeys = [
-      "sales.read",
-      "sales.create",
-      "reports.my_sales.read",
-      "commissions.read",
-      "stock.read",
-      "stock.reserve.create",
-    ];
-    const userPerms = userPermKeys
-      .map((key) => permMap[key])
-      .filter(Boolean)
-      .map((pid) => [3, pid]);
-    if (userPerms.length > 0) {
-      await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [userPerms]
-      );
-    }
-
-    // Atribuir permissões ao ALMOX (tudo de estoque)
-    const almoPermKeys = [
-      "stock.read",
-      "stock.move",
-      "stock.reserve.create",
-      "stock.reserve.update",
-      "stock.reserve.cancel",
-      "stock.inventory",
-    ];
-    const almoPerms = almoPermKeys
-      .map((key) => permMap[key])
-      .filter(Boolean)
-      .map((pid) => [4, pid]);
-    if (almoPerms.length > 0) {
-      await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [almoPerms]
-      );
-    }
-
-    // Atribuir permissões ao CONTAB
-    const contabPermKeys = [
-      "accounting.read",
-      "accounting.export",
-      "finance.read",
-    ];
-    const contabPerms = contabPermKeys
-      .map((key) => permMap[key])
-      .filter(Boolean)
-      .map((pid) => [5, pid]);
-    if (contabPerms.length > 0) {
-      await db.query(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [contabPerms]
-      );
     }
 
     console.log("✅ Roles e permissões verificadas/atualizadas");

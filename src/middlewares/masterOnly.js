@@ -1,22 +1,14 @@
 /**
- * Middleware: apenas usuários com role MASTER ou DEV podem prosseguir.
- * Deve ser usado após authMiddleware.
- * Compatível com sistema antigo (role string) e novo (roleId número)
+ * Middleware: apenas usuários com role DEV podem prosseguir.
+ * MASTER não tem mais acesso - apenas DEV possui bypass total.
  */
 export async function masterOnly(req, res, next) {
-  // Verificar roleId primeiro (sistema novo RBAC) - roleId 1 = MASTER
-  if (req.user?.roleId === 1) {
-    return next();
-  }
-
-  // Verificar role string (sistema antigo ou se foi enriquecido pelo authMiddleware)
   const role = String(req.user?.role || "").toUpperCase();
-  if (role === "MASTER" || role === "DEV") {
+  if (role === "DEV") {
     return next();
   }
 
-  // Se não tem roleId nem role, tentar buscar do banco
-  if (req.user?.userId && !req.user.roleId && !req.user.role) {
+  if (req.user?.userId && !req.user.role) {
     try {
       const { db } = await import("../config/database.js");
       const [rows] = await db.query(
@@ -25,7 +17,7 @@ export async function masterOnly(req, res, next) {
       );
       if (rows.length > 0) {
         const roleName = String(rows[0].name || "").toUpperCase();
-        if (roleName === "MASTER" || roleName === "DEV") {
+        if (roleName === "DEV") {
           return next();
         }
       }
@@ -34,5 +26,5 @@ export async function masterOnly(req, res, next) {
     }
   }
 
-  return res.status(403).json({ message: "Acesso restrito a administradores" });
+  return res.status(403).json({ message: "Acesso restrito a administradores (role DEV)" });
 }

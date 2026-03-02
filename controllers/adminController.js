@@ -332,12 +332,16 @@ async function deleteUser(req, res) {
 }
 
 /**
- * Lista roles
+ * Lista roles (oculta DEV para usuários não-DEV)
  */
 async function listRoles(req, res) {
   try {
     const roles = await RBACRepository.getAllRoles();
-    return res.json({ data: roles });
+    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
+
+    const filtered = isDev ? roles : roles.filter((r) => String(r.name || "").toUpperCase() !== "DEV");
+
+    return res.json({ data: filtered });
   } catch (error) {
     console.error("Error listing roles:", error);
     return res.status(500).json({ message: "Erro ao listar roles" });
@@ -345,7 +349,7 @@ async function listRoles(req, res) {
 }
 
 /**
- * Busca role por ID
+ * Busca role por ID (oculta DEV para não-DEV)
  */
 async function getRoleById(req, res) {
   try {
@@ -353,6 +357,11 @@ async function getRoleById(req, res) {
     const role = await RBACRepository.getRoleById(id);
 
     if (!role) {
+      return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
+    if (!isDev && String(role.name || "").toUpperCase() === "DEV") {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
@@ -397,20 +406,25 @@ async function createRole(req, res) {
 }
 
 /**
- * Atualiza role
+ * Atualiza role (apenas DEV pode editar MASTER)
  */
 async function updateRole(req, res) {
   try {
     const { id } = req.params;
     const { name, description } = req.body;
 
-    // Verificar se role existe
     const role = await RBACRepository.getRoleById(id);
     if (!role) {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
-    // Proteção: MASTER não pode ter nome alterado
+    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
+    if (String(role.name || "").toUpperCase() === "MASTER" && !isDev) {
+      return res.status(403).json({
+        message: "Apenas usuários com role DEV podem editar a role MASTER",
+      });
+    }
+
     if (role.name === "MASTER" && name && name !== "MASTER") {
       return res.status(400).json({
         message: "Não é permitido alterar o nome da role MASTER",
@@ -448,12 +462,16 @@ async function updateRole(req, res) {
 }
 
 /**
- * Lista permissões (com filtro opcional por módulo)
+ * Lista permissões (filtro opcional: ?module= ou ?module_id=)
  */
 async function listPermissions(req, res) {
   try {
-    const { module } = req.query;
-    const permissions = await RBACRepository.getAllPermissions(module || null);
+    const { module, module_id } = req.query;
+    const moduleId = module_id != null ? parseInt(module_id, 10) : null;
+    const permissions = await RBACRepository.getAllPermissions(
+      module || null,
+      !Number.isNaN(moduleId) ? moduleId : null
+    );
     return res.json({ data: permissions });
   } catch (error) {
     console.error("Error listing permissions:", error);
@@ -492,22 +510,27 @@ async function getRolePermissions(req, res) {
 }
 
 /**
- * Atualiza permissões de uma role
+ * Atualiza permissões de uma role (apenas DEV pode editar MASTER)
  */
 async function updateRolePermissions(req, res) {
   try {
     const { id } = req.params;
     const { permission_ids } = req.body;
 
-    // Validações
     if (!Array.isArray(permission_ids)) {
       return res.status(400).json({ message: "permission_ids deve ser um array" });
     }
 
-    // Verificar se role existe
     const role = await RBACRepository.getRoleById(id);
     if (!role) {
       return res.status(404).json({ message: "Role não encontrada" });
+    }
+
+    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
+    if (String(role.name || "").toUpperCase() === "MASTER" && !isDev) {
+      return res.status(403).json({
+        message: "Apenas usuários com role DEV podem editar as permissões da role MASTER",
+      });
     }
 
     // Proteção: MASTER e DEV devem ter pelo menos uma permissão
@@ -577,7 +600,9 @@ async function updatePermission(req, res) {
       updates.key = key;
     }
     if (description !== undefined) updates.description = description;
+    if (req.body.module_id !== undefined) updates.module_id = req.body.module_id;
     if (module !== undefined) updates.module = module;
+    if (req.body.endpoint_pattern !== undefined) updates.endpoint_pattern = req.body.endpoint_pattern;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "Nenhum campo para atualizar" });
@@ -615,13 +640,12 @@ async function deletePermission(req, res) {
 }
 
 /**
- * Cria nova permissão
+ * Cria nova permissão (aceita module_id ou module string)
  */
 async function createPermission(req, res) {
   try {
-    const { key, description, module } = req.body;
+    const { key, description, module, module_id } = req.body;
 
-    // Validações
     if (!key || key.trim() === "") {
       return res.status(400).json({ message: "Key da permissão é obrigatória" });
     }
@@ -630,11 +654,11 @@ async function createPermission(req, res) {
       return res.status(400).json({ message: "Descrição da permissão é obrigatória" });
     }
 
-    if (!module || module.trim() === "") {
-      return res.status(400).json({ message: "Módulo da permissão é obrigatório" });
+    const moduleOrId = module_id != null ? Number(module_id) : (module?.trim() || null);
+    if (moduleOrId == null || (typeof moduleOrId === "string" && !moduleOrId)) {
+      return res.status(400).json({ message: "Módulo da permissão é obrigatório (module_id ou module)" });
     }
 
-    // Validar formato da key (module.action)
     const keyPattern = /^[a-z0-9_]+\.[a-z0-9_.]+$/i;
     if (!keyPattern.test(key.trim())) {
       return res.status(400).json({
@@ -642,13 +666,12 @@ async function createPermission(req, res) {
       });
     }
 
-    // Verificar se já existe
     const exists = await RBACRepository.permissionKeyExists(key);
     if (exists) {
       return res.status(409).json({ message: "Permissão com esta key já existe" });
     }
 
-    const permission = await RBACRepository.createPermission(key, description, module);
+    const permission = await RBACRepository.createPermission(key, description, moduleOrId);
 
     return res.status(201).json(permission);
   } catch (error) {
@@ -659,6 +682,123 @@ async function createPermission(req, res) {
     }
 
     return res.status(500).json({ message: "Erro ao criar permissão" });
+  }
+}
+
+// ========== MÓDULOS ==========
+
+async function listModules(req, res) {
+  try {
+    const modules = await RBACRepository.getAllModules();
+    return res.json({ data: modules });
+  } catch (error) {
+    console.error("Error listing modules:", error);
+    return res.status(500).json({ message: "Erro ao listar módulos" });
+  }
+}
+
+async function getModuleById(req, res) {
+  try {
+    const { id } = req.params;
+    const module = await RBACRepository.getModuleById(id);
+
+    if (!module) {
+      return res.status(404).json({ message: "Módulo não encontrado" });
+    }
+
+    return res.json(module);
+  } catch (error) {
+    console.error("Error getting module:", error);
+    return res.status(500).json({ message: "Erro ao buscar módulo" });
+  }
+}
+
+async function createModule(req, res) {
+  try {
+    const { key, label, description } = req.body;
+
+    if (!key || key.trim() === "") {
+      return res.status(400).json({ message: "Key do módulo é obrigatória" });
+    }
+
+    if (!label || label.trim() === "") {
+      return res.status(400).json({ message: "Label do módulo é obrigatório" });
+    }
+
+    const exists = await RBACRepository.moduleKeyExists(key);
+    if (exists) {
+      return res.status(409).json({ message: "Módulo com esta key já existe" });
+    }
+
+    const module = await RBACRepository.createModule(key, label, description);
+
+    return res.status(201).json(module);
+  } catch (error) {
+    console.error("Error creating module:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Módulo com esta key já existe" });
+    }
+
+    return res.status(500).json({ message: "Erro ao criar módulo" });
+  }
+}
+
+async function updateModule(req, res) {
+  try {
+    const { id } = req.params;
+    const { key, label, description } = req.body;
+
+    const module = await RBACRepository.getModuleById(id);
+    if (!module) {
+      return res.status(404).json({ message: "Módulo não encontrado" });
+    }
+
+    const updates = {};
+    if (key !== undefined) updates.key = key;
+    if (label !== undefined) updates.label = label;
+    if (description !== undefined) updates.description = description;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Nenhum campo para atualizar" });
+    }
+
+    if (key && key !== module.key) {
+      const exists = await RBACRepository.moduleKeyExists(key, id);
+      if (exists) {
+        return res.status(409).json({ message: "Módulo com esta key já existe" });
+      }
+    }
+
+    const updated = await RBACRepository.updateModule(id, updates);
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating module:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Módulo com esta key já existe" });
+    }
+
+    return res.status(500).json({ message: "Erro ao atualizar módulo" });
+  }
+}
+
+async function deleteModule(req, res) {
+  try {
+    const { id } = req.params;
+
+    const module = await RBACRepository.getModuleById(id);
+    if (!module) {
+      return res.status(404).json({ message: "Módulo não encontrado" });
+    }
+
+    await RBACRepository.deleteModule(id);
+
+    return res.json({ message: "Módulo excluído com sucesso" });
+  } catch (error) {
+    console.error("Error deleting module:", error);
+    return res.status(500).json({ message: "Erro ao excluir módulo" });
   }
 }
 
@@ -678,4 +818,9 @@ export default {
   deletePermission: asyncHandler(deletePermission),
   getRolePermissions: asyncHandler(getRolePermissions),
   updateRolePermissions: asyncHandler(updateRolePermissions),
+  listModules: asyncHandler(listModules),
+  getModuleById: asyncHandler(getModuleById),
+  createModule: asyncHandler(createModule),
+  updateModule: asyncHandler(updateModule),
+  deleteModule: asyncHandler(deleteModule),
 };
