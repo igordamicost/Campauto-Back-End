@@ -211,9 +211,10 @@ async function list(req, res) {
   ];
   if (responsavelIds.length > 0) {
     const [rows] = await pool.query(
-      `SELECT id, name, email, role FROM users WHERE id IN (${responsavelIds
-        .map(() => "?")
-        .join(",")})`,
+      `SELECT u.id, u.name, u.email, r.name AS role
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.id IN (${responsavelIds.map(() => "?").join(",")})`,
       responsavelIds
     );
     const map = new Map(
@@ -326,7 +327,10 @@ async function getById(req, res) {
 
   if (item.usuario_id) {
     const [users] = await pool.query(
-      "SELECT id, name, email, role FROM users WHERE id = ?",
+      `SELECT u.id, u.name, u.email, r.name AS role
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.id = ?`,
       [item.usuario_id]
     );
     item.responsavel = users[0] || null;

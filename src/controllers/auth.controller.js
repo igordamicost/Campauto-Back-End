@@ -50,9 +50,9 @@ export async function forgotPassword(req, res) {
       SELECT 
         u.id,
         u.name,
-        u.role,
         u.role_id,
         u.empresa_id,
+        r.name AS role,
         e.nome_fantasia,
         e.razao_social,
         e.cnpj,
@@ -62,6 +62,7 @@ export async function forgotPassword(req, res) {
         e.telefone,
         e.logo_url
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN empresas e ON e.id = u.empresa_id
       WHERE u.email = ?
       LIMIT 1

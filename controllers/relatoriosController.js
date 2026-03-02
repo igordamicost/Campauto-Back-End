@@ -246,9 +246,10 @@ async function orcamentos(req, res) {
     const usuarioIds = [...new Set(data.map((row) => row.usuario_id).filter(Boolean))];
     if (usuarioIds.length > 0) {
       const [userRows] = await pool.query(
-        `SELECT id, name, email, role FROM users WHERE id IN (${usuarioIds
-          .map(() => "?")
-          .join(",")})`,
+        `SELECT u.id, u.name, u.email, r.name AS role
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.id IN (${usuarioIds.map(() => "?").join(",")})`,
         usuarioIds
       );
       const userMap = new Map(

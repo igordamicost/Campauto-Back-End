@@ -56,8 +56,8 @@ async function list(req, res) {
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   if (req.query.role) {
-    whereParts.push("u.role = ?");
-    params.push(req.query.role);
+    whereParts.push("r.name = ?");
+    params.push(String(req.query.role).toUpperCase());
   }
   if (req.query.blocked !== undefined && req.query.blocked !== "") {
     const blocked = String(req.query.blocked).toLowerCase();
@@ -72,9 +72,10 @@ async function list(req, res) {
 
   const [rows] = await pool.query(
     `
-      SELECT u.id, u.name, u.email, u.role, u.blocked, u.created_at,
+      SELECT u.id, u.name, u.email, u.role_id, r.name AS role, u.blocked, u.created_at,
              e.full_name AS employee_name, e.phone AS employee_phone
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN employees e ON e.user_id = u.id
       ${whereSql}
       ORDER BY u.id DESC
@@ -87,6 +88,7 @@ async function list(req, res) {
     `
       SELECT COUNT(*) AS total
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN employees e ON e.user_id = u.id
       ${whereSql}
     `,
@@ -104,9 +106,10 @@ async function getById(req, res) {
   const pool = getPool();
   const [rows] = await pool.query(
     `
-      SELECT u.id, u.name, u.email, u.role, u.blocked, u.created_at,
+      SELECT u.id, u.name, u.email, u.role_id, r.name AS role, u.blocked, u.created_at,
              e.full_name AS employee_name, e.phone AS employee_phone
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN employees e ON e.user_id = u.id
       WHERE u.id = ?
     `,
@@ -225,49 +228,11 @@ async function createUser(req, res) {
       finalEmpresaId = Number(empresa_id);
     }
 
-    // Inserir usuário com role_id e empresa_id (sempre tentar inserir ambos)
-    try {
-      // Tentar inserir com role_id primeiro
-      const [userResult] = await connection.query(
-        `
-          INSERT INTO users (name, email, password, role, role_id, empresa_id, must_set_password)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-        [name, email, hashedPassword, roleString, roleId, finalEmpresaId, mustSetPassword]
-      );
-      userId = userResult.insertId;
-    } catch (insertErr) {
-      // Se falhar por conta de role_id (ambiente legado), tentar sem role_id
-      if (
-        insertErr.code === "ER_BAD_FIELD_ERROR" &&
-        insertErr.message &&
-        insertErr.message.includes("role_id")
-      ) {
-        console.warn("Coluna role_id não existe, inserindo sem role_id:", insertErr.message);
-        const [userResult] = await connection.query(
-          `
-          INSERT INTO users (name, email, password, role, empresa_id, must_set_password)
-          VALUES (?, ?, ?, ?, ?, ?)
-          `,
-          [name, email, hashedPassword, roleString, finalEmpresaId, mustSetPassword]
-        );
-        userId = userResult.insertId;
-        
-        // Tentar atualizar role_id depois (se a coluna existir)
-        if (roleId !== null) {
-          try {
-            await connection.query(
-              "UPDATE users SET role_id = ? WHERE id = ?",
-              [roleId, userId]
-            );
-          } catch (updateErr) {
-            console.warn("Não foi possível atualizar role_id:", updateErr.message);
-          }
-        }
-      } else {
-        throw insertErr; // Re-throw se for outro erro
-      }
-    }
+    const [userResult] = await connection.query(
+      "INSERT INTO users (name, email, password, role_id, empresa_id, must_set_password) VALUES (?, ?, ?, ?, ?, ?)",
+      [name, email, hashedPassword, roleId, finalEmpresaId, mustSetPassword]
+    );
+    userId = userResult.insertId;
 
     // Criar employee se full_name foi fornecido
     if (full_name) {
@@ -376,7 +341,7 @@ async function updateUser(req, res) {
 
   try {
     const [rows] = await connection.query(
-      'SELECT id, role, role_id, empresa_id FROM users WHERE id = ?',
+      "SELECT id, role_id, empresa_id FROM users WHERE id = ?",
       [id]
     );
     if (!rows.length) {
@@ -421,21 +386,23 @@ async function updateUser(req, res) {
       userUpdates.push('must_set_password = ?');
       userParams.push(0); // Senha definida
     }
-    let targetRoleUpper = rows[0].role ? String(rows[0].role).toUpperCase() : "";
-
+    let targetRoleUpper = "";
     if (role !== undefined) {
-      // Mapear role string para role_id (se usando sistema RBAC)
       const [roleRows] = await connection.query(
-        'SELECT id FROM roles WHERE name = ?',
+        "SELECT id FROM roles WHERE name = ?",
         [role.toUpperCase()]
       );
       if (roleRows.length > 0) {
-        userUpdates.push('role_id = ?');
+        userUpdates.push("role_id = ?");
         userParams.push(roleRows[0].id);
       }
-      userUpdates.push('role = ?');
-      userParams.push(role);
       targetRoleUpper = String(role).toUpperCase();
+    } else if (rows[0].role_id) {
+      const [rRows] = await connection.query(
+        "SELECT name FROM roles WHERE id = ?",
+        [rows[0].role_id]
+      );
+      if (rRows.length > 0) targetRoleUpper = String(rRows[0].name || "").toUpperCase();
     }
 
     // Validar/atualizar empresa_id de acordo com a role (atual ou nova)
@@ -574,12 +541,12 @@ async function listPendingCompanyLinks(req, res) {
   const pool = getPool();
   const [rows] = await pool.query(
     `
-      SELECT id, name, email, role, role_id, empresa_id, created_at
-      FROM users
-      WHERE (role IS NULL OR UPPER(role) <> 'MASTER')
-        AND (role_id IS NULL OR role_id <> 1)
-        AND (empresa_id IS NULL)
-      ORDER BY created_at DESC, id DESC
+      SELECT u.id, u.name, u.email, r.name AS role, u.role_id, u.empresa_id, u.created_at
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      WHERE (u.role_id IS NULL OR u.role_id <> 1)
+        AND (u.empresa_id IS NULL)
+      ORDER BY u.created_at DESC, u.id DESC
     `
   );
 
@@ -594,10 +561,9 @@ async function getPendingCompanyCount(req, res) {
   const [[row]] = await pool.query(
     `
       SELECT COUNT(*) AS total
-      FROM users
-      WHERE (role IS NULL OR UPPER(role) <> 'MASTER')
-        AND (role_id IS NULL OR role_id <> 1)
-        AND (empresa_id IS NULL)
+      FROM users u
+      WHERE (u.role_id IS NULL OR u.role_id <> 1)
+        AND (u.empresa_id IS NULL)
     `
   );
 

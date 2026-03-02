@@ -38,6 +38,7 @@ async function ensureColumns() {
   await ensureColumn("telefone", "telefone VARCHAR(30) NULL");
   await ensureColumn("blocked", "blocked TINYINT(1) DEFAULT 0");
   await ensureColumn("must_set_password", "must_set_password TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("role_id", "role_id INT NULL");
 }
 
 async function seedMasterUser() {
@@ -53,19 +54,17 @@ async function seedMasterUser() {
 
   const hash = await bcrypt.hash("123456", 10);
 
+  let roleId = 1;
+  try {
+    const [roleRows] = await pool.query("SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1");
+    if (roleRows.length > 0) roleId = roleRows[0].id;
+  } catch {
+    // roles table pode não existir
+  }
+
   await pool.query(
-    `
-      INSERT INTO users (name, cpf, telefone, email, role, password)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `,
-    [
-      "igor sotolani",
-      "70781915104",
-      "67991303311",
-      MASTER_EMAIL,
-      "MASTER",
-      hash
-    ]
+    "INSERT INTO users (name, cpf, telefone, email, role_id, password) VALUES (?, ?, ?, ?, ?, ?)",
+    ["igor sotolani", "70781915104", "67991303311", MASTER_EMAIL, roleId, hash]
   );
 }
 
