@@ -3,6 +3,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { getPool } from "../db.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
+import { MenuRepository } from "../src/repositories/menu.repository.js";
 import {
   createSession,
   ACCESS_TTL_MIN,
@@ -77,6 +78,24 @@ async function getMe(req, res) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
+    const roleName = String(userWithPermissions.role_name || "").toUpperCase();
+    const isDev = roleName === "DEV";
+
+    let menu = [];
+    try {
+      const allItems = await MenuRepository.getAll();
+      let filtered;
+      if (isDev) {
+        filtered = allItems;
+      } else {
+        const permSet = new Set(userWithPermissions.permissions || []);
+        filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
+      }
+      menu = buildMenuTree(filtered, null);
+    } catch (menuErr) {
+      if (menuErr.code !== "ER_NO_SUCH_TABLE") console.warn("getMe menu:", menuErr.message);
+    }
+
     const response = {
       user: {
         id: userWithPermissions.id,
@@ -91,6 +110,7 @@ async function getMe(req, res) {
       modules: userWithPermissions.modules || [],
       permissions: userWithPermissions.permissions,
       permissionsDetail: userWithPermissions.permissionsDetail,
+      menu,
     };
 
     return res.json(response);
@@ -98,6 +118,27 @@ async function getMe(req, res) {
     console.error('Error in getMe:', error);
     return res.status(500).json({ message: 'Erro ao buscar dados do usuário' });
   }
+}
+
+function buildMenuTree(items, parentId) {
+  return items
+    .filter((i) => (parentId == null ? !i.parent_id : i.parent_id === parentId))
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map((item) => ({
+      id: item.id,
+      parent_id: item.parent_id,
+      module_key: item.module_key,
+      label: item.label,
+      path: item.path,
+      icon: item.icon,
+      order: item.order,
+      permission: item.permission,
+      permission_create: item.permission_create,
+      permission_update: item.permission_update,
+      permission_update_partial: item.permission_update_partial,
+      permission_delete: item.permission_delete,
+      children: buildMenuTree(items, item.id),
+    }));
 }
 
 async function refresh(req, res) {

@@ -524,13 +524,14 @@ export class RBACRepository {
 
   /**
    * Busca módulos que o usuário tem permissão de acessar (derivado das permissões da role)
+   * Usa module_id ou module (string) para vincular permissões a módulos
    */
   static async getUserModules(userId) {
     try {
       const [rows] = await db.query(
         `SELECT DISTINCT m.id, m.\`key\`, m.label, m.description
          FROM modules m
-         INNER JOIN permissions p ON p.module_id = m.id
+         INNER JOIN permissions p ON (p.module_id = m.id OR (p.module_id IS NULL AND m.\`key\` = p.module))
          INNER JOIN role_permissions rp ON rp.permission_id = p.id
          INNER JOIN users u ON rp.role_id = u.role_id
          WHERE u.id = ?

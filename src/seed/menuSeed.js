@@ -1,7 +1,8 @@
 import { db } from "../config/database.js";
 
 /**
- * Seed inicial do menu
+ * Seed inicial do menu (só executa se menu_items estiver vazio)
+ * O menu completo é inserido pela migration 044_menu_seed.sql
  */
 export async function seedMenu() {
   try {
@@ -15,12 +16,17 @@ export async function seedMenu() {
     const [existing] = await db.query("SELECT COUNT(*) AS count FROM menu_items");
     if (existing[0].count > 0) return;
 
+    // Inserir apenas itens raiz básicos (migration 044 tem o menu completo)
     const items = [
-      { parent_id: null, module_key: "vendas", label: "Vendas", path: "/vendas", icon: "ShoppingCart", order: 1, permission: "sales.read" },
-      { parent_id: null, module_key: "estoque", label: "Estoque", path: "/estoque", icon: "Package", order: 2, permission: "stock.read" },
-      { parent_id: null, module_key: "oficina", label: "Oficina", path: "/oficina", icon: "Wrench", order: 3, permission: "service_orders.read" },
-      { parent_id: null, module_key: "financeiro", label: "Financeiro", path: "/financeiro", icon: "DollarSign", order: 4, permission: "finance.read" },
-      { parent_id: null, module_key: "admin", label: "Administração", path: "/admin", icon: "Settings", order: 5, permission: "admin.roles.manage" },
+      { parent_id: null, module_key: "dashboard", label: "Mapa do Sistema", path: "/dashboard", icon: "LayoutDashboard", order: 0, permission: "dashboard.view" },
+      { parent_id: null, module_key: "vendas", label: "Vendas", path: null, icon: "ShoppingCart", order: 1, permission: "sales.read" },
+      { parent_id: null, module_key: "clientes", label: "Clientes", path: null, icon: "UserCircle", order: 2, permission: "sales.read" },
+      { parent_id: null, module_key: "oficina", label: "Oficina", path: null, icon: "Wrench", order: 3, permission: "service_orders.read" },
+      { parent_id: null, module_key: "estoque", label: "Estoque", path: null, icon: "Package", order: 4, permission: "stock.read" },
+      { parent_id: null, module_key: "financeiro", label: "Financeiro", path: null, icon: "DollarSign", order: 5, permission: "finance.read" },
+      { parent_id: null, module_key: "contabil", label: "Fiscal/Contábil", path: null, icon: "FileText", order: 6, permission: "accounting.read" },
+      { parent_id: null, module_key: "relatorios", label: "Relatórios", path: null, icon: "BarChart3", order: 7, permission: "reports.read" },
+      { parent_id: null, module_key: "admin", label: "Administração", path: null, icon: "Settings", order: 8, permission: "admin.roles.manage" },
     ];
 
     for (const item of items) {
