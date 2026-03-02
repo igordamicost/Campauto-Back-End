@@ -187,6 +187,11 @@ export class MigrationService {
         tables: ["orcamentos_tags_applied"],
         name: "Orçamentos - coluna tags (venda_realizada, venda_nao_realizada)",
       },
+      {
+        file: "036_auth_sessions.sql",
+        tables: ["auth_sessions_applied"],
+        name: "Auth - sessões server-side (refresh token rotativo)",
+      },
     ];
 
     let executed = 0;

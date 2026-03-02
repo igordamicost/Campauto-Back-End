@@ -9,6 +9,7 @@ import { verifyDbConnection } from "./src/config/database.js";
 import { verifyEmailConnection } from "./src/config/email.js";
 import { ReservationSchedulerService } from "./src/services/reservationScheduler.service.js";
 import { MigrationService } from "./src/services/migration.service.js";
+import { startSessionCleanupJob } from "./src/services/sessionCleanupJob.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -35,6 +36,16 @@ async function bootstrap() {
     }
   } catch (error) {
     console.warn("⚠️  Erro ao verificar tabela reservations:", error.message);
+  }
+
+  // Job de limpeza de sessões expiradas
+  try {
+    const sessionsExist = await MigrationService.tableExists("auth_sessions");
+    if (sessionsExist) {
+      startSessionCleanupJob();
+    }
+  } catch (error) {
+    console.warn("⚠️  Erro ao iniciar job de sessões:", error.message);
   }
 
   app.listen(PORT, () => {

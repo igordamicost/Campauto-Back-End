@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./swagger.js";
 import client from "prom-client";
@@ -33,7 +34,8 @@ import pedidosCompraRoutes from "./routes/pedidosCompra.js";
 const app = express();
 
 app.set("trust proxy", 1);
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser());
 app.use(express.json({ limit: "2mb" }));
 
 // ===================== MÉTRICAS PROMETHEUS =====================

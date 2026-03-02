@@ -3,45 +3,69 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { getPool } from "../db.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
+import {
+  createSession,
+  ACCESS_TTL_MIN,
+} from "../src/services/sessionStore.service.js";
+import {
+  getRefreshCookieOptions,
+  getClearCookieOptions,
+  COOKIE_NAME as COOKIE_NAME_CONFIG,
+} from "../src/config/authCookies.js";
+import {
+  validateRefreshToken,
+  rotateRefreshToken,
+  revokeSession,
+} from "../src/services/sessionStore.service.js";
 
 async function login(req, res) {
   const { email, password } = req.body || {};
   if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password required' });
+    return res.status(400).json({ message: "Email and password required" });
   }
 
   const pool = getPool();
   const [rows] = await pool.query(
-    `
-      SELECT id, name, email, role_id, password, blocked
-      FROM users
-      WHERE email = ?
-      LIMIT 1
-    `,
+    `SELECT id, name, email, role_id, empresa_id, password, blocked
+     FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
 
   const user = rows[0];
-  const invalidCreds = { message: 'E-mail ou senha incorretos' };
+  const invalidCreds = { message: "E-mail ou senha incorretos" };
   if (!user) return res.status(401).json(invalidCreds);
-  if (user.blocked) return res.status(403).json({ message: 'Conta bloqueada' });
-  if (!user.password) return res.status(403).json({ message: 'Defina sua senha primeiro (verifique o e-mail)' });
+  if (user.blocked) return res.status(403).json({ message: "Conta bloqueada" });
+  if (!user.password) return res.status(403).json({ message: "Defina sua senha primeiro (verifique o e-mail)" });
 
   let ok = false;
-  if (user.password && user.password.startsWith('$2')) {
+  if (user.password && user.password.startsWith("$2")) {
     ok = await bcrypt.compare(password, user.password);
   } else {
-    const hash = crypto.createHash('sha256').update(password).digest('hex');
+    const hash = crypto.createHash("sha256").update(password).digest("hex");
     ok = hash === user.password;
   }
 
   if (!ok) return res.status(401).json(invalidCreds);
 
-  const token = jwt.sign(
-    { userId: user.id, roleId: user.role_id, empresaId: user.empresa_id ?? null },
-    process.env.JWT_SECRET
+  const meta = {
+    userAgent: req.headers["user-agent"],
+    ip: req.ip || req.connection?.remoteAddress,
+  };
+  const { sessionId, refreshToken } = await createSession(user.id, meta);
+
+  const accessToken = jwt.sign(
+    {
+      userId: user.id,
+      roleId: user.role_id,
+      empresaId: user.empresa_id ?? null,
+      sessionId,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: `${ACCESS_TTL_MIN}m` }
   );
-  return res.json({ token });
+
+  res.cookie(COOKIE_NAME_CONFIG, refreshToken, getRefreshCookieOptions());
+  return res.json({ token: accessToken });
 }
 
 async function getMe(req, res) {
@@ -74,4 +98,60 @@ async function getMe(req, res) {
   }
 }
 
-export { login, getMe };
+async function refresh(req, res) {
+  const refreshToken = req.cookies?.[COOKIE_NAME_CONFIG];
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Refresh token ausente" });
+  }
+
+  const result = await validateRefreshToken(refreshToken);
+  if (!result.valid) {
+    res.clearCookie(COOKIE_NAME_CONFIG, getClearCookieOptions());
+    if (result.revokeFamily) {
+      return res.status(401).json({ message: "Sessão revogada por segurança (replay detectado)" });
+    }
+    return res.status(401).json({ message: "Refresh token inválido ou expirado" });
+  }
+
+  const oldHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+  const rotated = await rotateRefreshToken(result.session.id, oldHash);
+  if (!rotated) {
+    res.clearCookie(COOKIE_NAME_CONFIG, getClearCookieOptions());
+    return res.status(401).json({ message: "Falha na rotação do token" });
+  }
+
+  const [userRows] = await getPool().query(
+    "SELECT id, role_id, empresa_id FROM users WHERE id = ?",
+    [result.session.user_id]
+  );
+  const user = userRows[0];
+  if (!user) {
+    res.clearCookie(COOKIE_NAME_CONFIG, getClearCookieOptions());
+    return res.status(401).json({ message: "Usuário não encontrado" });
+  }
+
+  const accessToken = jwt.sign(
+    {
+      userId: user.id,
+      roleId: user.role_id,
+      empresaId: user.empresa_id ?? null,
+      sessionId: result.session.id,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: `${ACCESS_TTL_MIN}m` }
+  );
+
+  res.cookie(COOKIE_NAME_CONFIG, rotated.refreshToken, getRefreshCookieOptions());
+  return res.json({ token: accessToken });
+}
+
+async function logout(req, res) {
+  const sessionId = req.user?.sessionId;
+  if (sessionId) {
+    await revokeSession(sessionId);
+  }
+  res.clearCookie(COOKIE_NAME_CONFIG, getClearCookieOptions());
+  return res.json({ message: "Logout realizado" });
+}
+
+export { login, getMe, refresh, logout };

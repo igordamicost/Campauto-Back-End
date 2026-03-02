@@ -25,6 +25,41 @@
 
 /**
  * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Renova access token usando refresh token (cookie HttpOnly)
+ *     tags: [Auth]
+ *     description: Requer cookie refresh_token. Retorna novo access token no body e novo refresh no cookie.
+ *     responses:
+ *       200:
+ *         description: Novo token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *       401:
+ *         description: Refresh token ausente, inválido ou expirado
+ */
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Revoga sessão e limpa cookie
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Opcional Bearer token. Sempre limpa cookie.
+ *     responses:
+ *       200:
+ *         description: Logout realizado
+ */
+
+/**
+ * @openapi
  * /auth/forgot-password:
  *   post:
  *     summary: Envia email de recuperação
