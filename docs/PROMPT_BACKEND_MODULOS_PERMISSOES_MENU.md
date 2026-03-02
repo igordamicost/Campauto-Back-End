@@ -5,8 +5,8 @@
 1. **Tabelas**: `modules`, `permissions`, `menu_items`, `role_permissions` com estrutura necessária
 2. **Vínculos**: módulos → permissões → roles (role_permissions)
 3. **Menu dinâmico**: backend envia ao frontend o menu filtrado pelas permissões do usuário
-4. **Migration**: zerar permissões de MASTER e demais roles; apenas role DEV tem todas as permissões
-5. **Usuário id 2** (igor sotolani) deve ter role DEV com acesso total
+4. **Hierarquia**: DEV > MASTER. DEV tem bypass total. MASTER tem todas as permissões via role_permissions
+5. **Usuário id 2** (igor sotolani) = MASTER, único usuário inicial, pode cadastrar os demais
 
 ---
 
@@ -131,8 +131,9 @@ mysql -u user -p campauto < database/migrations/045_modules_permissions_menu_com
 ## 5. Regras de negócio
 
 - **DEV**: bypass total em todas as verificações de permissão
-- **MASTER**: após migration, **sem permissões** até DEV atribuir via PUT /admin/roles/:id/permissions
-- **Demais roles**: **sem permissões** até DEV configurar
+- **MASTER**: todas as permissões via role_permissions; pode cadastrar usuários e gerenciar roles
+- **Usuário id 2**: MASTER, único usuário inicial, empresa_id=3
+- **Demais roles**: permissões atribuídas por MASTER ou DEV
 - **Apenas DEV** pode editar a role MASTER
 - **Role DEV** só aparece em listagens para usuários com role DEV
 - **Módulos e menu**: apenas DEV pode criar/editar/excluir (configuração do sistema)

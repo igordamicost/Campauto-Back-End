@@ -4,7 +4,7 @@ import menuController from "../controllers/menuController.js";
 import * as servicosController from "../controllers/servicosController.js";
 import * as elevadoresController from "../controllers/elevadoresController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
-import { requirePermission, requireDev } from "../src/middlewares/permissions.js";
+import { requirePermission, requireSystemConfig } from "../src/middlewares/permissions.js";
 
 const router = express.Router();
 const asyncHandler = (fn) => (req, res, next) =>
@@ -39,18 +39,18 @@ router.post("/users", adminController.createUser);
 router.put("/users/:id", adminController.updateUser);
 router.delete("/users/:id", adminController.deleteUser);
 
-// Menu (apenas DEV)
-router.get("/menu", requireDev, menuController.listAdminMenu);
-router.post("/menu", requireDev, menuController.createMenuItem);
-router.put("/menu/:id", requireDev, menuController.updateMenuItem);
-router.delete("/menu/:id", requireDev, menuController.deleteMenuItem);
+// Menu (apenas role com system.config)
+router.get("/menu", requireSystemConfig, menuController.listAdminMenu);
+router.post("/menu", requireSystemConfig, menuController.createMenuItem);
+router.put("/menu/:id", requireSystemConfig, menuController.updateMenuItem);
+router.delete("/menu/:id", requireSystemConfig, menuController.deleteMenuItem);
 
-// Módulos (apenas DEV - configuração do sistema)
-router.get("/modules", requireDev, adminController.listModules);
-router.get("/modules/:id", requireDev, adminController.getModuleById);
-router.post("/modules", requireDev, adminController.createModule);
-router.put("/modules/:id", requireDev, adminController.updateModule);
-router.delete("/modules/:id", requireDev, adminController.deleteModule);
+// Módulos (apenas role com system.config)
+router.get("/modules", requireSystemConfig, adminController.listModules);
+router.get("/modules/:id", requireSystemConfig, adminController.getModuleById);
+router.post("/modules", requireSystemConfig, adminController.createModule);
+router.put("/modules/:id", requireSystemConfig, adminController.updateModule);
+router.delete("/modules/:id", requireSystemConfig, adminController.deleteModule);
 
 // Roles e Permissões (requer admin.roles.manage - DEV atribui a MASTER)
 router.get("/roles", requirePermission("admin.roles.manage"), adminController.listRoles);
@@ -58,9 +58,9 @@ router.get("/roles/:id", requirePermission("admin.roles.manage"), adminControlle
 router.post("/roles", requirePermission("admin.roles.manage"), adminController.createRole);
 router.put("/roles/:id", requirePermission("admin.roles.manage"), adminController.updateRole);
 router.get("/permissions", requirePermission("admin.roles.manage"), adminController.listPermissions);
-router.post("/permissions", requireDev, adminController.createPermission);
-router.put("/permissions/:id", requireDev, adminController.updatePermission);
-router.delete("/permissions/:id", requireDev, adminController.deletePermission);
+router.post("/permissions", requireSystemConfig, adminController.createPermission);
+router.put("/permissions/:id", requireSystemConfig, adminController.updatePermission);
+router.delete("/permissions/:id", requireSystemConfig, adminController.deletePermission);
 router.get("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.getRolePermissions);
 router.put("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.updateRolePermissions);
 

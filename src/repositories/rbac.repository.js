@@ -189,8 +189,7 @@ export class RBACRepository {
 
   /**
    * Busca usuário com role, permissões e módulos
-   * Apenas role DEV tem acesso total (todas permissões e módulos)
-   * Demais roles: permissões e módulos derivados de role_permissions
+   * Tudo via role_id -> role_permissions -> permissions (sem bypass por nome)
    */
   static async getUserWithPermissions(userId) {
     const [userRows] = await db.query(
@@ -204,18 +203,8 @@ export class RBACRepository {
     if (userRows.length === 0) return null;
 
     const user = userRows[0];
-    const roleName = String(user.role_name || "").toUpperCase();
-
-    let permissions;
-    let modules;
-
-    if (roleName === "DEV") {
-      permissions = await this.getAllPermissions();
-      modules = await this.getAllModules();
-    } else {
-      permissions = await this.getUserPermissions(userId);
-      modules = await this.getUserModules(userId);
-    }
+    const permissions = await this.getUserPermissions(userId);
+    const modules = await this.getUserModules(userId);
 
     return {
       ...user,
@@ -417,11 +406,10 @@ export class RBACRepository {
   }
 
   /**
-   * Verifica se uma role é MASTER
+   * Verifica se role_id é MASTER (id 1). Autorização apenas por role_id.
    */
   static async isMasterRole(roleId) {
-    const role = await this.getRoleById(roleId);
-    return role && role.name === "MASTER";
+    return roleId === 1;
   }
 
   // ========== MÓDULOS ==========

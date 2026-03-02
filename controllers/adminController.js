@@ -275,14 +275,14 @@ async function deleteUser(req, res) {
 }
 
 /**
- * Lista roles (oculta DEV para usuários não-DEV)
+ * Lista roles (oculta role DEV para quem não tem system.config)
  */
 async function listRoles(req, res) {
   try {
     const roles = await RBACRepository.getAllRoles();
-    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
+    const hasSystemConfig = await RBACRepository.userHasPermission(req.user?.userId, "system.config");
 
-    const filtered = isDev ? roles : roles.filter((r) => String(r.name || "").toUpperCase() !== "DEV");
+    const filtered = hasSystemConfig ? roles : roles.filter((r) => String(r.name || "").toUpperCase() !== "DEV");
 
     return res.json({ data: filtered });
   } catch (error) {
@@ -292,7 +292,7 @@ async function listRoles(req, res) {
 }
 
 /**
- * Busca role por ID (oculta DEV para não-DEV)
+ * Busca role por ID (oculta DEV para quem não tem system.config)
  */
 async function getRoleById(req, res) {
   try {
@@ -303,8 +303,8 @@ async function getRoleById(req, res) {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
-    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
-    if (!isDev && String(role.name || "").toUpperCase() === "DEV") {
+    const hasSystemConfig = await RBACRepository.userHasPermission(req.user?.userId, "system.config");
+    if (!hasSystemConfig && String(role.name || "").toUpperCase() === "DEV") {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
@@ -349,7 +349,7 @@ async function createRole(req, res) {
 }
 
 /**
- * Atualiza role (apenas DEV pode editar MASTER)
+ * Atualiza role (apenas quem tem system.config pode editar MASTER)
  */
 async function updateRole(req, res) {
   try {
@@ -361,10 +361,10 @@ async function updateRole(req, res) {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
-    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
-    if (String(role.name || "").toUpperCase() === "MASTER" && !isDev) {
+    const hasSystemConfig = await RBACRepository.userHasPermission(req.user?.userId, "system.config");
+    if (String(role.name || "").toUpperCase() === "MASTER" && !hasSystemConfig) {
       return res.status(403).json({
-        message: "Apenas usuários com role DEV podem editar a role MASTER",
+        message: "Apenas usuários com permissão system.config podem editar a role MASTER",
       });
     }
 
@@ -453,7 +453,7 @@ async function getRolePermissions(req, res) {
 }
 
 /**
- * Atualiza permissões de uma role (apenas DEV pode editar MASTER)
+ * Atualiza permissões de uma role (apenas quem tem system.config pode editar MASTER)
  */
 async function updateRolePermissions(req, res) {
   try {
@@ -469,10 +469,10 @@ async function updateRolePermissions(req, res) {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
-    const isDev = String(req.user?.role || "").toUpperCase() === "DEV";
-    if (String(role.name || "").toUpperCase() === "MASTER" && !isDev) {
+    const hasSystemConfig = await RBACRepository.userHasPermission(req.user?.userId, "system.config");
+    if (String(role.name || "").toUpperCase() === "MASTER" && !hasSystemConfig) {
       return res.status(403).json({
-        message: "Apenas usuários com role DEV podem editar as permissões da role MASTER",
+        message: "Apenas usuários com permissão system.config podem editar as permissões da role MASTER",
       });
     }
 

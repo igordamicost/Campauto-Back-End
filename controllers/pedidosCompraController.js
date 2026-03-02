@@ -1,5 +1,6 @@
 import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
+import { RBACRepository } from "../src/repositories/rbac.repository.js";
 import { getTemplate, renderWithData } from "../src/services/templateService.js";
 import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services/email.service.js";
 import { loadLogo } from "../src/services/logoLoader.js";
@@ -97,17 +98,11 @@ function formatMoney(val) {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function isMasterRole(roleString, roleId) {
-  const role = String(roleString || "").toUpperCase();
-  return role === "MASTER" || roleId === 1;
-}
 
 async function list(req, res) {
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
   const query = { ...req.query };
-  if (!isMaster && req.user?.userId) {
+  if (!canSeeAll && req.user?.userId) {
     query.usuario_id__eq = req.user.userId;
   }
 
@@ -164,10 +159,8 @@ async function getById(req, res) {
   const item = await baseService.getById(TABLE, id);
   if (!item) return res.status(404).json({ message: "Not found" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
-  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(404).json({ message: "Not found" });
   }
 
@@ -250,10 +243,8 @@ async function update(req, res) {
   const item = await baseService.getById(TABLE, id);
   if (!item) return res.status(404).json({ message: "Not found" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
-  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(404).json({ message: "Not found" });
   }
 
@@ -309,10 +300,8 @@ async function remove(req, res) {
   const item = await baseService.getById(TABLE, id);
   if (!item) return res.status(404).json({ message: "Not found" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
-  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(404).json({ message: "Not found" });
   }
 
@@ -334,10 +323,8 @@ async function updateStatus(req, res) {
   const item = await baseService.getById(TABLE, id);
   if (!item) return res.status(404).json({ message: "Not found" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
-  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(404).json({ message: "Not found" });
   }
 
@@ -393,10 +380,8 @@ async function enviarFornecedores(req, res) {
   const pedido = pedidoRows[0];
   if (!pedido) return res.status(404).json({ message: "Pedido não encontrado" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = isMasterRole(role, roleId);
-  if (!isMaster && req.user?.userId && pedido.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && pedido.usuario_id !== req.user.userId) {
     return res.status(404).json({ message: "Not found" });
   }
 

@@ -78,19 +78,11 @@ async function getMe(req, res) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
-    const roleName = String(userWithPermissions.role_name || "").toUpperCase();
-    const isDev = roleName === "DEV";
-
     let menu = [];
     try {
       const allItems = await MenuRepository.getAll();
-      let filtered;
-      if (isDev) {
-        filtered = allItems;
-      } else {
-        const permSet = new Set(userWithPermissions.permissions || []);
-        filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
-      }
+      const permSet = new Set(userWithPermissions.permissions || []);
+      const filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
       const tree = buildMenuTree(filtered, null);
       menu = pruneEmptyParents(tree);
     } catch (menuErr) {

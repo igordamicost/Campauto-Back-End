@@ -15,13 +15,7 @@ export function requirePermission(permissionKeys) {
 
       const userId = req.user.userId;
 
-      // Apenas DEV tem bypass total (acesso sem verificação de permissões)
-      const roleName = String(req.user.role || "").toUpperCase();
-      if (roleName === "DEV") {
-        return next();
-      }
-
-      // Verificar cada permissão
+      // Verificar permissão via role_id -> role_permissions (sem bypass por nome)
       for (const permissionKey of permissions) {
         const hasPermission = await RBACRepository.userHasPermission(
           userId,
@@ -82,16 +76,17 @@ export function requireRole(roleNames) {
 }
 
 /**
- * Middleware que verifica se o usuário é MASTER
+ * Middleware que verifica se o usuário é MASTER (via permission admin.users.manage)
  */
-export const requireMaster = requireRole("MASTER");
+export const requireMaster = requirePermission("admin.users.manage");
 
 /**
- * Middleware que verifica se o usuário é ADMIN, MASTER ou DEV
+ * Middleware que verifica se o usuário tem permissão de admin
  */
-export const requireAdmin = requireRole(["ADMIN", "MASTER", "DEV"]);
+export const requireAdmin = requirePermission(["admin.users.manage", "admin.roles.manage"]);
 
 /**
- * Middleware que exige role DEV (apenas desenvolvedores)
+ * Middleware para configuração do sistema (menu, módulos, permissões)
+ * Apenas role com permission system.config (normalmente DEV)
  */
-export const requireDev = requireRole("DEV");
+export const requireSystemConfig = requirePermission("system.config");

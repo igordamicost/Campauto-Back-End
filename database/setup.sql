@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS users (
   telefone VARCHAR(30) NULL,
   email VARCHAR(190) NOT NULL UNIQUE,
   password VARCHAR(255) NULL,
-  role ENUM('MASTER','USER') NOT NULL DEFAULT 'USER',
   role_id INT NULL,
   blocked TINYINT(1) DEFAULT 0,
   must_set_password TINYINT(1) NOT NULL DEFAULT 0,
@@ -268,6 +267,6 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   KEY idx_usuario_id (usuario_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO users (name, email, password, role, role_id)
-SELECT 'MASTER', 'master@campauto.com', SHA2('Master@123', 256), 'MASTER', 1
+INSERT INTO users (name, email, password, role_id)
+SELECT 'MASTER', 'master@campauto.com', SHA2('Master@123', 256), 1
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'master@campauto.com');

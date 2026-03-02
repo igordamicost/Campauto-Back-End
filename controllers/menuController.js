@@ -15,24 +15,10 @@ async function getMenu(req, res) {
       return res.status(401).json({ message: "Não autenticado" });
     }
 
-    const userRole = await RBACRepository.getUserRole(userId);
-    const roleName = String(userRole?.name || "").toUpperCase();
-    const isDev = roleName === "DEV";
-
     const allItems = await MenuRepository.getAll();
-
-    let filtered;
-    if (isDev) {
-      filtered = allItems;
-    } else {
-      const userPerms = await RBACRepository.getUserPermissions(userId);
-      const permSet = new Set(userPerms.map((p) => p.key));
-
-      filtered = allItems.filter((item) => {
-        if (!item.permission) return true;
-        return permSet.has(item.permission);
-      });
-    }
+    const userPerms = await RBACRepository.getUserPermissions(userId);
+    const permSet = new Set(userPerms.map((p) => p.key));
+    const filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
 
     const tree = buildTree(filtered, null);
     return res.json(tree);

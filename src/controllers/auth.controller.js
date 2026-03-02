@@ -5,9 +5,9 @@ import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../services/ema
 import { loadLogo } from "../services/logoLoader.js";
 import { getTemplate, renderWithData } from "../services/templateService.js";
 
-function isMasterRole(roleString, roleId) {
-  const role = String(roleString || "").toUpperCase();
-  return role === "MASTER" || roleId === 1;
+/** Role MASTER tem id 1 - empresa opcional para envio de e-mail. */
+function isMasterRoleId(roleId) {
+  return roleId === 1;
 }
 
 const PASSWORD_SCHEMA = {
@@ -88,9 +88,8 @@ export async function forgotPassword(req, res) {
     const link = `${baseUrl}/recuperar-senha?token=${token}`;
     const defaultCompanyName = process.env.COMPANY_NAME || "Campauto";
 
-    const roleStr = user.role;
     const roleId = user.role_id;
-    const isMaster = isMasterRole(roleStr, roleId);
+    const isMaster = isMasterRoleId(roleId);
 
     // Regra: usuários não-master precisam ter empresa vinculada para enviar e-mail de reset
     if (!isMaster && !user.empresa_id) {

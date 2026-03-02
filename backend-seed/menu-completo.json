@@ -1,0 +1,156 @@
+{
+  "$schema": "Menu do sistema - estrutura para seed no backend",
+  "description": "O backend popula tabela menu_items com este JSON. Ícones são nomes do Lucide React.",
+  "version": "1.0",
+  "items": [
+    {
+      "module_key": "dashboard",
+      "label": "Mapa do Sistema",
+      "path": "/dashboard",
+      "icon": "LayoutDashboard",
+      "order": 0,
+      "permission": "dashboard.view",
+      "children": []
+    },
+    {
+      "module_key": "vendas",
+      "label": "Vendas",
+      "path": null,
+      "icon": "ShoppingCart",
+      "order": 1,
+      "permission": "sales.read",
+      "permission_create": "sales.create",
+      "permission_update": "sales.update",
+      "permission_delete": "sales.delete",
+      "children": [
+        { "label": "Orçamentos", "path": "/dashboard/vendas/orcamentos", "icon": "FileCheck", "order": 0, "permission": "sales.read" },
+        { "label": "Pedidos/Vendas", "path": "/dashboard/vendas/pedidos", "icon": "ShoppingBag", "order": 1, "permission": "sales.read" },
+        { "label": "Meu Desempenho", "path": "/dashboard/vendas/desempenho", "icon": "BarChart3", "order": 2, "permission": "reports.my_sales.read" }
+      ]
+    },
+    {
+      "module_key": "clientes",
+      "label": "Clientes",
+      "path": null,
+      "icon": "UserCircle",
+      "order": 2,
+      "permission": "sales.read",
+      "children": [
+        { "label": "Clientes Físicos", "path": "/dashboard/clientes/fisicos", "icon": "UserCircle", "order": 0, "permission": "sales.read" },
+        { "label": "Clientes Jurídicos", "path": "/dashboard/clientes/juridicos", "icon": "Building2", "order": 1, "permission": "sales.read" },
+        { "label": "Veículos", "path": "/dashboard/clientes/veiculos", "icon": "Car", "order": 2, "permission": "sales.read" }
+      ]
+    },
+    {
+      "module_key": "oficina",
+      "label": "Oficina",
+      "path": null,
+      "icon": "Wrench",
+      "order": 3,
+      "permission": "service_orders.read",
+      "children": [
+        { "label": "Pátio", "path": "/dashboard/oficina/patio", "icon": "LayoutDashboard", "order": 0, "permission": "service_orders.read" },
+        { "label": "Ordens de Serviço (OS)", "path": "/dashboard/oficina/os", "icon": "ClipboardList", "order": 1, "permission": "service_orders.read" }
+      ]
+    },
+    {
+      "module_key": "estoque",
+      "label": "Estoque",
+      "path": null,
+      "icon": "Package",
+      "order": 4,
+      "permission": "stock.read",
+      "children": [
+        { "label": "Produtos", "path": "/dashboard/estoque/produtos", "icon": "Boxes", "order": 0, "permission": "stock.read" },
+        { "label": "Estoque / Saldos", "path": "/dashboard/estoque/saldos", "icon": "PackageSearch", "order": 1, "permission": "stock.read" },
+        { "label": "Adicionar ao estoque", "path": "/dashboard/estoque/entrada", "icon": "PackagePlus", "order": 2, "permission": "stock.read" },
+        { "label": "Movimentações", "path": "/dashboard/estoque/movimentacoes", "icon": "ArrowUpDown", "order": 3, "permission": "stock.read" },
+        { "label": "Reservas de Peça", "path": "/dashboard/estoque/reservas", "icon": "Calendar", "order": 4, "permission": "stock.read" },
+        { "label": "Pedidos de Compra", "path": "/dashboard/estoque/compras", "icon": "ShoppingBag", "order": 5, "permission": "stock.read" },
+        { "label": "Fornecedores", "path": "/dashboard/estoque/fornecedores", "icon": "Truck", "order": 6, "permission": "stock.read" }
+      ]
+    },
+    {
+      "module_key": "financeiro",
+      "label": "Financeiro",
+      "path": null,
+      "icon": "DollarSign",
+      "order": 5,
+      "permission": "finance.read",
+      "children": [
+        { "label": "Contas a Receber", "path": "/dashboard/financeiro/receber", "icon": "Receipt", "order": 0, "permission": "finance.read" },
+        { "label": "Contas a Pagar", "path": "/dashboard/financeiro/pagar", "icon": "CreditCard", "order": 1, "permission": "finance.read" },
+        { "label": "Caixa/Bancos", "path": "/dashboard/financeiro/caixa", "icon": "Wallet", "order": 2, "permission": "finance.read" },
+        { "label": "Fluxo de Caixa", "path": "/dashboard/financeiro/fluxo", "icon": "TrendingUp", "order": 3, "permission": "finance.read" },
+        { "label": "Emitir Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/emitir", "icon": "FilePlus", "order": 4, "permission": "finance.read" },
+        { "label": "Buscar Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/buscar", "icon": "Search", "order": 5, "permission": "finance.read" },
+        { "label": "Cancelar Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/cancelar", "icon": "FileX", "order": 6, "permission": "finance.read" }
+      ]
+    },
+    {
+      "module_key": "contabil",
+      "label": "Fiscal/Contábil",
+      "path": null,
+      "icon": "FileText",
+      "order": 6,
+      "permission": "accounting.read",
+      "children": [
+        { "label": "Exportações", "path": "/dashboard/fiscal/exportacoes", "icon": "FileText", "order": 0, "permission": "accounting.export" },
+        { "label": "Resumos / DRE", "path": "/dashboard/fiscal/dre", "icon": "BarChart3", "order": 1, "permission": "accounting.read" }
+      ]
+    },
+    {
+      "module_key": "relatorios",
+      "label": "Relatórios",
+      "path": null,
+      "icon": "BarChart3",
+      "order": 7,
+      "permission": "reports.read",
+      "children": [
+        { "label": "Vendas", "path": "/dashboard/relatorios/vendas", "icon": "ShoppingCart", "order": 0, "permission": "reports.read" },
+        { "label": "Oficina", "path": "/dashboard/relatorios/oficina", "icon": "Wrench", "order": 1, "permission": "reports.read" },
+        { "label": "Estoque", "path": "/dashboard/relatorios/estoque", "icon": "Package", "order": 2, "permission": "reports.read" },
+        { "label": "Financeiro", "path": "/dashboard/relatorios/financeiro", "icon": "DollarSign", "order": 3, "permission": "reports.read" }
+      ]
+    },
+    {
+      "module_key": "admin",
+      "label": "Administração",
+      "path": null,
+      "icon": "Settings",
+      "order": 8,
+      "permission": "admin.roles.manage",
+      "children": [
+        { "label": "Empresas", "path": "/dashboard/administracao/empresas", "icon": "Building2", "order": 0, "permission": "admin.companies.manage" },
+        { "label": "Usuários e Acessos", "path": "/dashboard/administracao/usuarios", "icon": "Users", "order": 1, "permission": "admin.users.manage" },
+        { "label": "Roles e Permissões", "path": "/dashboard/administracao/roles", "icon": "Shield", "order": 2, "permission": "admin.roles.manage" },
+        { "label": "Templates de E-mail", "path": "/dashboard/administracao/templates", "icon": "Mail", "order": 3, "permission": "admin.read" },
+        { "label": "Configurações Gerais", "path": "/dashboard/administracao/config", "icon": "Settings", "order": 4, "permission": "admin.read" },
+        { "label": "Serviços", "path": "/dashboard/administracao/servicos", "icon": "FileText", "order": 5, "permission": "admin.read" },
+        { "label": "Elevadores", "path": "/dashboard/administracao/elevadores", "icon": "Layers", "order": 6, "permission": "admin.read" },
+        { "label": "Pessoas (RH) - Funcionários", "path": "/dashboard/pessoas/funcionarios", "icon": "UserCircle", "order": 7, "permission": "hr.read" },
+        { "label": "Pessoas (RH) - Cargos/Permissões", "path": "/dashboard/pessoas/cargos", "icon": "Settings", "order": 8, "permission": "hr.read" }
+      ]
+    }
+  ],
+  "modules": [
+    { "key": "dashboard", "label": "Mapa do Sistema", "icon": "LayoutDashboard", "order": 0 },
+    { "key": "vendas", "label": "Vendas", "icon": "ShoppingCart", "order": 1 },
+    { "key": "clientes", "label": "Clientes", "icon": "UserCircle", "order": 2 },
+    { "key": "oficina", "label": "Oficina", "icon": "Wrench", "order": 3 },
+    { "key": "estoque", "label": "Estoque", "icon": "Package", "order": 4 },
+    { "key": "financeiro", "label": "Financeiro", "icon": "DollarSign", "order": 5 },
+    { "key": "contabil", "label": "Fiscal/Contábil", "icon": "FileText", "order": 6 },
+    { "key": "relatorios", "label": "Relatórios", "icon": "BarChart3", "order": 7 },
+    { "key": "admin", "label": "Administração", "icon": "Settings", "order": 8 },
+    { "key": "rh", "label": "RH", "icon": "Users", "order": 9 }
+  ],
+  "icons_reference": [
+    "LayoutDashboard", "ShoppingCart", "UserCircle", "Wrench", "Package",
+    "DollarSign", "FileText", "BarChart3", "Settings", "Users", "FileCheck",
+    "ShoppingBag", "Building2", "Car", "ClipboardList", "Boxes", "PackageSearch",
+    "PackagePlus", "ArrowUpDown", "Calendar", "Receipt", "CreditCard",
+    "Wallet", "TrendingUp", "FilePlus", "Search", "FileX", "Shield", "Mail",
+    "Layers", "Truck"
+  ]
+}

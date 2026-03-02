@@ -1,4 +1,5 @@
 import { getPool } from "../db.js";
+import { RBACRepository } from "../src/repositories/rbac.repository.js";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const MESES_NOME = [
@@ -152,9 +153,7 @@ async function orcamentos(req, res) {
     });
   }
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
 
   const pool = getPool();
   const where = [];
@@ -173,7 +172,7 @@ async function orcamentos(req, res) {
     params.push(status);
   }
 
-  if (!isMaster && req.user?.userId) {
+  if (!canSeeAll && req.user?.userId) {
     where.push("o.usuario_id = ?");
     params.push(req.user.userId);
   }

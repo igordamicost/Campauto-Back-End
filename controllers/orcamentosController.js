@@ -1,5 +1,6 @@
 import * as baseService from "../services/baseService.js";
 import { getPool } from "../db.js";
+import { RBACRepository } from "../src/repositories/rbac.repository.js";
 import { sendEmail as mailServiceSend } from "../src/services/email.service.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
 
@@ -185,11 +186,9 @@ async function empresaExists(empresaId) {
 }
 
 async function list(req, res) {
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
   const query = { ...req.query };
-  if (!isMaster && req.user?.userId) {
+  if (!canSeeAll && req.user?.userId) {
     query.usuario_id__eq = req.user.userId;
   }
 
@@ -318,10 +317,8 @@ async function getById(req, res) {
   const item = rows[0];
   if (!item) return res.status(404).json({ message: "Not found" });
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
-  if (!isMaster && req.user?.userId && item.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && item.usuario_id !== req.user.userId) {
     return res.status(403).json({ message: "Acesso negado" });
   }
 
@@ -525,13 +522,11 @@ async function create(req, res) {
   }
 
   // Definir empresa emissora de acordo com a role e vínculo do usuário
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
 
   let empresaId = null;
 
-  if (isMaster) {
+  if (canSeeAll) {
     if (req.body.empresa_id != null && req.body.empresa_id !== "") {
       const empOk = await empresaExists(req.body.empresa_id);
       if (!empOk) {
@@ -583,10 +578,8 @@ async function create(req, res) {
 async function update(req, res) {
   const dados = { ...req.body };
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
-  if (!isMaster) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll) {
     delete dados.usuario_id;
   }
 
@@ -720,10 +713,8 @@ async function updateTags(req, res) {
     return res.status(404).json({ message: "Orçamento não encontrado" });
   }
 
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
-  if (!isMaster && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
     return res.status(403).json({ message: "Acesso negado" });
   }
 
@@ -796,10 +787,8 @@ async function sendEmail(req, res) {
   }
 
   // 2. Access control (MASTER or owner)
-  const role = String(req.user?.role || "").toUpperCase();
-  const roleId = req.user?.roleId;
-  const isMaster = role === "MASTER" || roleId === 1;
-  if (!isMaster && req.user?.userId && quote.usuario_id !== req.user.userId) {
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && quote.usuario_id !== req.user.userId) {
     return res.status(403).json({ message: "Acesso negado" });
   }
 

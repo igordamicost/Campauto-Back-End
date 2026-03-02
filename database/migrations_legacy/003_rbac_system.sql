@@ -37,9 +37,11 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 -- Nota: MySQL não suporta IF NOT EXISTS em ALTER TABLE, então verificamos antes
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns 
   WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'role_id');
+SET @has_role = (SELECT COUNT(*) FROM information_schema.columns 
+  WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'role');
 SET @sql = IF(@col_exists = 0, 
-  'ALTER TABLE users ADD COLUMN role_id INT NULL AFTER role', 
-  'SELECT "Column role_id already exists" AS message');
+  CONCAT('ALTER TABLE users ADD COLUMN role_id INT NULL AFTER ', IF(@has_role > 0, 'role', 'password')), 
+  'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
@@ -144,10 +146,13 @@ SELECT 5, id FROM permissions
 WHERE (module = 'contabil' OR (module = 'financeiro' AND `key` LIKE '%.read')) OR `key` LIKE '%.export'
 ON DUPLICATE KEY UPDATE role_id=role_id;
 
--- Migrar users existentes: MASTER -> role_id=1, USER -> role_id=3
-UPDATE users SET role_id = 1 WHERE role = 'MASTER' AND role_id IS NULL;
-UPDATE users SET role_id = 3 WHERE role = 'USER' AND role_id IS NULL;
-UPDATE users SET role_id = 3 WHERE role_id IS NULL; -- default para USER
+-- Migrar users existentes (só se coluna role existir; setup novo já usa só role_id)
+SET @has_role = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'role');
+SET @sql1 = IF(@has_role > 0, 'UPDATE users SET role_id = 1 WHERE role = ''MASTER'' AND role_id IS NULL', 'SELECT 1');
+PREPARE s1 FROM @sql1; EXECUTE s1; DEALLOCATE PREPARE s1;
+SET @sql2 = IF(@has_role > 0, 'UPDATE users SET role_id = 3 WHERE role = ''USER'' AND role_id IS NULL', 'SELECT 1');
+PREPARE s2 FROM @sql2; EXECUTE s2; DEALLOCATE PREPARE s2;
+UPDATE users SET role_id = 3 WHERE role_id IS NULL;
 
 -- Adicionar foreign key após migração (se não existir)
 SET @fk_exists = (SELECT COUNT(*) FROM information_schema.table_constraints 

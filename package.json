@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "docker": "docker compose up --build",
-    "import": "node importCsv.js"
+    "import": "node importCsv.js",
+    "migration:build": "node database/build-migration.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

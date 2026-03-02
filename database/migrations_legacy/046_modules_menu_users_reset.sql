@@ -183,9 +183,9 @@ SELECT id, 'admin', 'Pessoas (RH) - Funcionários', '/dashboard/pessoas/funciona
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT id, 'admin', 'Pessoas (RH) - Cargos/Permissões', '/dashboard/pessoas/cargos', 'Settings', 8, 'hr.read', NULL, NULL, NULL, NULL FROM menu_items WHERE module_key = 'admin' AND parent_id IS NULL LIMIT 1;
 
--- ========== 4. REMOVER USUÁRIOS (exceto id 2) ==========
--- Redirecionar referências para o usuário 2 antes de deletar
-SET @keep_user = 2;
+-- ========== 4. REMOVER USUÁRIOS (exceto id 2, ou user 1 se 2 não existir) ==========
+-- Em fresh install: user 1 existe. Em dev: user 2 existe. Usar o que existir.
+SET @keep_user = COALESCE((SELECT id FROM users WHERE id = 2 LIMIT 1), (SELECT id FROM users ORDER BY id LIMIT 1));
 
 -- Tabelas com RESTRICT: atualizar para usuário 2 (ignorar erros se tabela/coluna não existir)
 UPDATE reservations SET salesperson_user_id = @keep_user WHERE salesperson_user_id != @keep_user AND salesperson_user_id IS NOT NULL;
@@ -216,14 +216,24 @@ SET FOREIGN_KEY_CHECKS = 0;
 DELETE FROM users WHERE id != @keep_user;
 SET FOREIGN_KEY_CHECKS = 1;
 
--- ========== 5. ROLE DEV E PERMISSÕES ==========
+-- ========== 5. ROLES E PERMISSÕES ==========
+-- DEV: bypass total no código. MASTER: acesso via role_permissions.
 INSERT INTO roles (name, description)
-VALUES ('DEV', 'Desenvolvedor - Acesso total. Única role que pode editar MASTER e configurar o sistema.')
+VALUES ('DEV', 'Desenvolvedor - Acesso total. Bypass em todas as verificações.')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+-- Garantir MASTER existe
+INSERT INTO roles (name, description)
+VALUES ('MASTER', 'Acesso total ao sistema. Pode cadastrar usuários e gerenciar roles.')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 DELETE FROM role_permissions;
+-- DEV: todas as permissões
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1), id FROM permissions;
+-- MASTER: todas as permissões (cadastrar usuários, gerenciar roles, etc.)
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1), id FROM permissions;
 
--- Garantir usuário 2 = role DEV
-UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1) WHERE id = @keep_user;
+-- Usuário mantido = MASTER (único usuário inicial, pode cadastrar os demais)
+UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1) WHERE id = @keep_user;

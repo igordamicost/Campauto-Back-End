@@ -5,9 +5,9 @@ import { sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services
 import { loadLogo } from "../src/services/logoLoader.js";
 import { getTemplate, renderWithData } from "../src/services/templateService.js";
 
-function isMasterRole(roleString, roleId) {
-  const role = String(roleString || "").toUpperCase();
-  return role === "MASTER" || roleId === 1;
+/** Role MASTER tem id 1 - empresa_id opcional. Outras roles exigem empresa. */
+function isMasterRoleId(roleId) {
+  return roleId === 1;
 }
 
 async function ensureEmpresaExists(connectionOrPool, empresaId) {
@@ -197,8 +197,8 @@ async function createUser(req, res) {
       }
     }
 
-    // Validar empresa_id de acordo com a role
-    const isMaster = isMasterRole(roleString, null);
+    // Validar empresa_id de acordo com a role (MASTER = role_id 1 tem empresa opcional)
+    const isMaster = isMasterRoleId(roleId);
     let finalEmpresaId = null;
 
     if (isMaster) {
@@ -386,7 +386,7 @@ async function updateUser(req, res) {
       userUpdates.push('must_set_password = ?');
       userParams.push(0); // Senha definida
     }
-    let targetRoleUpper = "";
+    let targetRoleId = rows[0].role_id;
     if (role !== undefined) {
       const [roleRows] = await connection.query(
         "SELECT id FROM roles WHERE name = ?",
@@ -395,20 +395,13 @@ async function updateUser(req, res) {
       if (roleRows.length > 0) {
         userUpdates.push("role_id = ?");
         userParams.push(roleRows[0].id);
+        targetRoleId = roleRows[0].id;
       }
-      targetRoleUpper = String(role).toUpperCase();
-    } else if (rows[0].role_id) {
-      const [rRows] = await connection.query(
-        "SELECT name FROM roles WHERE id = ?",
-        [rows[0].role_id]
-      );
-      if (rRows.length > 0) targetRoleUpper = String(rRows[0].name || "").toUpperCase();
     }
 
-    // Validar/atualizar empresa_id de acordo com a role (atual ou nova)
+    // Validar/atualizar empresa_id de acordo com a role (MASTER = role_id 1 tem empresa opcional)
     if (empresa_id !== undefined) {
-      const currentRoleId = rows[0].role_id;
-      const isMaster = isMasterRole(targetRoleUpper, currentRoleId);
+      const isMaster = isMasterRoleId(targetRoleId);
 
       if (isMaster) {
         // MASTER: empresa_id opcional (pode ser null)
