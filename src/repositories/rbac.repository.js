@@ -436,6 +436,12 @@ export class RBACRepository {
       return rows;
     } catch (error) {
       if (error.code === "ER_NO_SUCH_TABLE") return [];
+      if (error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          "SELECT id, `key`, label, description, created_at, updated_at FROM modules ORDER BY label"
+        );
+        return rows.map((r) => ({ ...r, icon: null, order: 0 }));
+      }
       throw error;
     }
   }
@@ -444,22 +450,46 @@ export class RBACRepository {
    * Busca módulo por ID
    */
   static async getModuleById(moduleId) {
-    const [rows] = await db.query(
-      "SELECT id, `key`, label, description, icon, `order`, created_at, updated_at FROM modules WHERE id = ?",
-      [moduleId]
-    );
-    return rows[0] || null;
+    try {
+      const [rows] = await db.query(
+        "SELECT id, `key`, label, description, icon, `order`, created_at, updated_at FROM modules WHERE id = ?",
+        [moduleId]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      if (error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          "SELECT id, `key`, label, description, created_at, updated_at FROM modules WHERE id = ?",
+          [moduleId]
+        );
+        const r = rows[0];
+        return r ? { ...r, icon: null, order: 0 } : null;
+      }
+      throw error;
+    }
   }
 
   /**
    * Busca módulo por key
    */
   static async getModuleByKey(key) {
-    const [rows] = await db.query(
-      "SELECT id, `key`, label, description, icon, `order` FROM modules WHERE `key` = ?",
-      [key?.trim()?.toLowerCase()]
-    );
-    return rows[0] || null;
+    try {
+      const [rows] = await db.query(
+        "SELECT id, `key`, label, description, icon, `order` FROM modules WHERE `key` = ?",
+        [key?.trim()?.toLowerCase()]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      if (error.code === "ER_BAD_FIELD_ERROR") {
+        const [rows] = await db.query(
+          "SELECT id, `key`, label, description FROM modules WHERE `key` = ?",
+          [key?.trim()?.toLowerCase()]
+        );
+        const r = rows[0];
+        return r ? { ...r, icon: null, order: 0 } : null;
+      }
+      throw error;
+    }
   }
 
   /**

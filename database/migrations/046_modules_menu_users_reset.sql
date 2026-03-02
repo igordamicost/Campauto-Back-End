@@ -182,13 +182,15 @@ UPDATE orcamentos_servico SET usuario_id = @keep_user WHERE usuario_id != @keep_
 UPDATE oficina_os SET usuario_id = @keep_user WHERE usuario_id != @keep_user;
 UPDATE os_checklists SET responsavel_id = @keep_user WHERE responsavel_id != @keep_user AND responsavel_id IS NOT NULL;
 
--- Tabelas com CASCADE: serão limpas ao deletar (auth_sessions, password_tokens, notifications)
--- Deletar usuários exceto id 2
-SET FOREIGN_KEY_CHECKS = 0;
+-- Limpar tabelas que referenciam usuários (evitar órfãos após DELETE)
 DELETE FROM auth_sessions WHERE user_id != @keep_user;
 DELETE FROM password_reset_tokens WHERE user_id != @keep_user;
 DELETE FROM notifications WHERE user_id != @keep_user;
 DELETE FROM notification_sent_log WHERE user_id != @keep_user;
+DELETE FROM google_mail_integrations WHERE owner_master_user_id != @keep_user;
+
+-- Deletar usuários exceto id 2
+SET FOREIGN_KEY_CHECKS = 0;
 DELETE FROM users WHERE id != @keep_user;
 SET FOREIGN_KEY_CHECKS = 1;
 
