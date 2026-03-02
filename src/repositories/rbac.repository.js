@@ -64,16 +64,17 @@ export class RBACRepository {
     try {
       const [rows] = await db.query(
         `SELECT DISTINCT p.id, p.\`key\`, p.description, p.module, p.module_id,
-                COALESCE(m.\`key\`, p.module) AS module_key
+                COALESCE(m.\`key\`, p.module) AS module_key,
+                COALESCE(m.label, p.module) AS _order
          FROM permissions p
          INNER JOIN role_permissions rp ON p.id = rp.permission_id
          INNER JOIN users u ON rp.role_id = u.role_id
          LEFT JOIN modules m ON p.module_id = m.id
          WHERE u.id = ?
-         ORDER BY COALESCE(m.label, p.module), p.\`key\``,
+         ORDER BY _order, p.\`key\``,
         [userId]
       );
-      return rows;
+      return rows.map(({ _order, ...r }) => r);
     } catch (error) {
       if (error.code === "ER_NO_SUCH_TABLE" || error.code === "ER_BAD_FIELD_ERROR") {
         const [rows] = await db.query(
