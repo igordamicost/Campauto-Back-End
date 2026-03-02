@@ -30,6 +30,13 @@ export async function seedRBAC() {
         (5, 'CONTAB', 'Contábil')
     `);
 
+    // Inserir role DEV (por nome, para funcionar em qualquer ambiente)
+    await db.query(`
+      INSERT INTO roles (name, description)
+      VALUES ('DEV', 'Desenvolvedor - Acesso total para configuração do sistema')
+      ON DUPLICATE KEY UPDATE description = VALUES(description)
+    `);
+
     // Inserir permissões se não existirem
     await db.query(`
       INSERT IGNORE INTO permissions (\`key\`, description, module) VALUES
@@ -79,6 +86,26 @@ export async function seedRBAC() {
         `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
         [masterPerms]
       );
+    }
+
+    // Atribuir permissões ao DEV (todas, como MASTER)
+    const [devRole] = await db.query("SELECT id FROM roles WHERE name = 'DEV' LIMIT 1");
+    if (devRole.length > 0 && permissions.length > 0) {
+      const devId = devRole[0].id;
+      const devPerms = permissions.map((p) => [devId, p.id]);
+      await db.query(
+        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ?`,
+        [devPerms]
+      );
+    }
+
+    // Atualizar usuário id 2 para role DEV (se existir)
+    const [user2] = await db.query("SELECT id FROM users WHERE id = 2 LIMIT 1");
+    if (user2.length > 0) {
+      const [devRow] = await db.query("SELECT id FROM roles WHERE name = 'DEV' LIMIT 1");
+      if (devRow.length > 0) {
+        await db.query("UPDATE users SET role_id = ? WHERE id = 2", [devRow[0].id]);
+      }
     }
 
     // Atribuir permissões ao ADMIN (todas exceto admin.users.manage)

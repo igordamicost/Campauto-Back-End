@@ -510,10 +510,11 @@ async function updateRolePermissions(req, res) {
       return res.status(404).json({ message: "Role não encontrada" });
     }
 
-    // Proteção: MASTER deve ter pelo menos uma permissão
-    if (role.name === "MASTER" && permission_ids.length === 0) {
+    // Proteção: MASTER e DEV devem ter pelo menos uma permissão
+    const roleName = String(role.name || "").toUpperCase();
+    if ((roleName === "MASTER" || roleName === "DEV") && permission_ids.length === 0) {
       return res.status(400).json({
-        message: "Role MASTER deve ter pelo menos uma permissão",
+        message: "Role MASTER/DEV deve ter pelo menos uma permissão",
       });
     }
 
@@ -542,6 +543,74 @@ async function updateRolePermissions(req, res) {
   } catch (error) {
     console.error("Error updating role permissions:", error);
     return res.status(500).json({ message: "Erro ao atualizar permissões" });
+  }
+}
+
+/**
+ * Atualiza permissão
+ */
+async function updatePermission(req, res) {
+  try {
+    const { id } = req.params;
+    const { key, description, module } = req.body;
+
+    const permission = await RBACRepository.getPermissionById(id);
+    if (!permission) {
+      return res.status(404).json({ message: "Permissão não encontrada" });
+    }
+
+    const updates = {};
+    if (key !== undefined) {
+      if (!key || key.trim() === "") {
+        return res.status(400).json({ message: "Key da permissão não pode ser vazia" });
+      }
+      const keyPattern = /^[a-z0-9_]+\.[a-z0-9_.]+$/i;
+      if (!keyPattern.test(key.trim())) {
+        return res.status(400).json({
+          message: "Formato de key inválido. Use o formato: module.action (ex: sales.read)",
+        });
+      }
+      const exists = await RBACRepository.permissionKeyExists(key, id);
+      if (exists) {
+        return res.status(409).json({ message: "Permissão com esta key já existe" });
+      }
+      updates.key = key;
+    }
+    if (description !== undefined) updates.description = description;
+    if (module !== undefined) updates.module = module;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Nenhum campo para atualizar" });
+    }
+
+    const updated = await RBACRepository.updatePermission(id, updates);
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating permission:", error);
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Permissão com esta key já existe" });
+    }
+    return res.status(500).json({ message: "Erro ao atualizar permissão" });
+  }
+}
+
+/**
+ * Exclui permissão (remove associações em role_permissions via CASCADE)
+ */
+async function deletePermission(req, res) {
+  try {
+    const { id } = req.params;
+
+    const permission = await RBACRepository.getPermissionById(id);
+    if (!permission) {
+      return res.status(404).json({ message: "Permissão não encontrada" });
+    }
+
+    await RBACRepository.deletePermission(id);
+    return res.json({ message: "Permissão excluída com sucesso" });
+  } catch (error) {
+    console.error("Error deleting permission:", error);
+    return res.status(500).json({ message: "Erro ao excluir permissão" });
   }
 }
 
@@ -605,6 +674,8 @@ export default {
   updateRole: asyncHandler(updateRole),
   listPermissions: asyncHandler(listPermissions),
   createPermission: asyncHandler(createPermission),
+  updatePermission: asyncHandler(updatePermission),
+  deletePermission: asyncHandler(deletePermission),
   getRolePermissions: asyncHandler(getRolePermissions),
   updateRolePermissions: asyncHandler(updateRolePermissions),
 };

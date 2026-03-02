@@ -52,7 +52,7 @@
 | `IDLE_TIMEOUT_MIN` | Inatividade máxima (minutos) | 30 |
 | `COOKIE_SECURE` | Cookie só em HTTPS | true (false para dev) |
 | `COOKIE_SAMESITE` | SameSite do cookie | lax |
-| `COOKIE_DOMAIN` | Domínio do cookie | (vazio) |
+| `COOKIE_DOMAIN` | Domínio do cookie. Para IDN (ex: jrcarpeças.com.br), use punycode: `xn--jrcarpeas-w3a.com.br` | (vazio) |
 | `CORS_ORIGINS` | Origens permitidas (CSRF, separadas por vírgula) | (vazio) |
 | `JWT_SECRET` | Segredo para JWT | (obrigatório) |
 

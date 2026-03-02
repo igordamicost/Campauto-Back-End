@@ -138,6 +138,7 @@ export class RBACRepository {
 
   /**
    * Busca usuário com role e permissões
+   * Para role DEV, retorna todas as permissões existentes (acesso total)
    */
   static async getUserWithPermissions(userId) {
     const [userRows] = await db.query(
@@ -151,7 +152,15 @@ export class RBACRepository {
     if (userRows.length === 0) return null;
 
     const user = userRows[0];
-    const permissions = await this.getUserPermissions(userId);
+    const roleName = String(user.role_name || "").toUpperCase();
+
+    // Role DEV tem acesso total - retornar todas as permissões
+    let permissions;
+    if (roleName === "DEV") {
+      permissions = await this.getAllPermissions();
+    } else {
+      permissions = await this.getUserPermissions(userId);
+    }
 
     return {
       ...user,
@@ -326,5 +335,54 @@ export class RBACRepository {
   static async isMasterRole(roleId) {
     const role = await this.getRoleById(roleId);
     return role && role.name === "MASTER";
+  }
+
+  /**
+   * Busca permissão por ID
+   */
+  static async getPermissionById(permissionId) {
+    const [rows] = await db.query(
+      "SELECT id, `key`, description, module, created_at FROM permissions WHERE id = ?",
+      [permissionId]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Atualiza uma permissão
+   */
+  static async updatePermission(permissionId, updates) {
+    const updateFields = [];
+    const params = [];
+
+    if (updates.key !== undefined) {
+      updateFields.push("`key` = ?");
+      params.push(updates.key.trim());
+    }
+    if (updates.description !== undefined) {
+      updateFields.push("description = ?");
+      params.push(updates.description?.trim() || null);
+    }
+    if (updates.module !== undefined) {
+      updateFields.push("module = ?");
+      params.push(updates.module?.trim() || null);
+    }
+
+    if (updateFields.length === 0) return await this.getPermissionById(permissionId);
+
+    params.push(permissionId);
+    await db.query(
+      `UPDATE permissions SET ${updateFields.join(", ")} WHERE id = ?`,
+      params
+    );
+    return await this.getPermissionById(permissionId);
+  }
+
+  /**
+   * Exclui uma permissão (remove associações em role_permissions via CASCADE)
+   */
+  static async deletePermission(permissionId) {
+    await db.query("DELETE FROM permissions WHERE id = ?", [permissionId]);
+    return true;
   }
 }

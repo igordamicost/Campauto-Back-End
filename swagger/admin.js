@@ -245,6 +245,68 @@
 
 /**
  * @openapi
+ * /admin/permissions/{id}:
+ *   put:
+ *     summary: Atualiza permissão (requer admin.roles.manage)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               key:
+ *                 type: string
+ *                 example: sales.read
+ *               description:
+ *                 type: string
+ *               module:
+ *                 type: string
+ *                 example: vendas
+ *     responses:
+ *       200:
+ *         description: Permissão atualizada
+ *       400:
+ *         description: Dados inválidos
+ *       404:
+ *         description: Permissão não encontrada
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
+ * /admin/permissions/{id}:
+ *   delete:
+ *     summary: Exclui permissão (requer admin.roles.manage)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Permissão excluída
+ *       404:
+ *         description: Permissão não encontrada
+ *       403:
+ *         description: Sem permissão
+ */
+
+/**
+ * @openapi
  * /admin/roles/{id}/permissions:
  *   get:
  *     summary: Busca permissões de uma role (requer admin.roles.manage)

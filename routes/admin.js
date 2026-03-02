@@ -45,6 +45,8 @@ router.post("/roles", requirePermission("admin.roles.manage"), adminController.c
 router.put("/roles/:id", requirePermission("admin.roles.manage"), adminController.updateRole);
 router.get("/permissions", requirePermission("admin.roles.manage"), adminController.listPermissions);
 router.post("/permissions", requirePermission("admin.roles.manage"), adminController.createPermission);
+router.put("/permissions/:id", requirePermission("admin.roles.manage"), adminController.updatePermission);
+router.delete("/permissions/:id", requirePermission("admin.roles.manage"), adminController.deletePermission);
 router.get("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.getRolePermissions);
 router.put("/roles/:id/permissions", requirePermission("admin.roles.manage"), adminController.updateRolePermissions);
 
