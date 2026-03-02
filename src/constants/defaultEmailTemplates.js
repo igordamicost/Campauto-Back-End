@@ -2,9 +2,12 @@
  * Templates padrão quando não existir no banco.
  * Placeholders suportados (podem ser usados em subject e HTML):
  * {{company_name}}, {{company_logo}}, {{company_header_html}},
- * {{user_name}}, {{user_email}}, {{action_url}}, {{token_expires_in}},
+ * {{user_name}}, {{user_email}}, {{user}}, {{password}},
+ * {{action_url}}, {{token_expires_in}},
  * {{order_number}}, {{order_date}}, {{supplier_name}},
  * {{quote_number}}, {{quote_valid_until}}, {{client_name}}, {{quote_total}}
+ *
+ * FIRST_ACCESS: {{user}} = email para login, {{password}} = senha temporária.
  */
 
 export const DEFAULT_FIRST_ACCESS = {
@@ -18,11 +21,16 @@ export const DEFAULT_FIRST_ACCESS = {
   <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
     <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
     <h2 style="margin:0 0 16px;color:#333;font-size:20px">Olá, {{user_name}}!</h2>
+    <p style="margin:0 0 16px;color:#555;line-height:1.6">
+      Você foi cadastrado em {{company_name}}. Use as credenciais abaixo para acessar o sistema:
+    </p>
+    <p style="margin:0 0 8px;color:#333;font-size:14px"><strong>Usuário:</strong> {{user}}</p>
+    <p style="margin:0 0 16px;color:#333;font-size:14px"><strong>Senha temporária:</strong> {{password}}</p>
     <p style="margin:0 0 24px;color:#555;line-height:1.6">
-      Você foi cadastrado em {{company_name}}. Para acessar o sistema, defina sua senha clicando no botão abaixo.
+      Recomendamos trocar a senha no primeiro acesso. Clique no botão abaixo:
     </p>
     <a href="{{action_url}}" style="display:inline-block;background:#0d6efd;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
-      Definir senha
+      Definir nova senha
     </a>
     <p style="margin:24px 0 0;color:#888;font-size:12px">Este link expira em {{token_expires_in}}.</p>
     <p style="margin:8px 0 0;color:#888;font-size:12px;word-break:break-all">Ou acesse: {{action_url}}</p>

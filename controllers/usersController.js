@@ -1,6 +1,18 @@
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { getPool } from "../db.js";
 import { sendPasswordSetupEmail } from "../src/controllers/auth.controller.js";
+
+/** Gera senha temporária legível (12 chars, sem caracteres ambíguos) */
+function generateTemporaryPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let result = "";
+  const bytes = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
 
 /** Role MASTER tem id 1 - empresa_id opcional. Outras roles exigem empresa. */
 function isMasterRoleId(roleId) {
@@ -107,18 +119,20 @@ async function createUser(req, res) {
     // Definir role padrão se não fornecido
     const roleString = (role || "USER").toUpperCase();
 
-  // Se password foi fornecido, validar e usar. Caso contrário, usuário definirá depois (must_set_password = 1)
-  let hashedPassword = null;
-  let mustSetPassword = 1;
+  // Se password foi fornecido, validar e usar. Caso contrário, gerar senha temporária e enviar email
+  let hashedPassword;
+  let mustSetPassword = 0;
+  let temporaryPassword = null;
 
   if (password && password.trim() !== "") {
-    // Validar senha (mínimo 6 caracteres)
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must have at least 6 characters" });
     }
-    // Fazer hash da senha
     hashedPassword = await bcrypt.hash(password, 12);
-    mustSetPassword = 0; // Senha já definida
+  } else {
+    temporaryPassword = generateTemporaryPassword();
+    hashedPassword = await bcrypt.hash(temporaryPassword, 12);
+    mustSetPassword = 1;
   }
 
   const pool = getPool();
@@ -236,13 +250,14 @@ async function createUser(req, res) {
     connection.release();
   }
 
-  // Se senha não foi fornecida, enviar email para definir senha (link /recuperar-senha, válido 7 dias)
-  if (mustSetPassword === 1) {
+  // Se senha temporária: enviar email com credenciais + link para trocar
+  if (mustSetPassword === 1 && temporaryPassword) {
     try {
       await sendPasswordSetupEmail(userId, email, name, {
         templateKey: "FIRST_ACCESS",
         empresaId: finalEmpresaId,
         expiresInHours: 24 * 7,
+        temporaryPassword,
       });
     } catch (err) {
       return res.status(201).json({

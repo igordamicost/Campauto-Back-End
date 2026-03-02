@@ -18,6 +18,8 @@ const PLACEHOLDERS = [
   "company_header_html",
   "user_name",
   "user_email",
+  "user", // email para login (FIRST_ACCESS)
+  "password", // senha temporária (FIRST_ACCESS)
   "action_url",
   "token_expires_in",
   "order_number",

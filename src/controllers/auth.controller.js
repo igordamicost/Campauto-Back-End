@@ -35,7 +35,7 @@ function validatePassword(pwd) {
  * @param {number} userId
  * @param {string} email
  * @param {string} userName
- * @param {{ templateKey?: 'FIRST_ACCESS'|'RESET', empresaId?: number, expiresInHours?: number }} options
+ * @param {{ templateKey?: 'FIRST_ACCESS'|'RESET', empresaId?: number, expiresInHours?: number, temporaryPassword?: string }} options
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
 export async function sendPasswordSetupEmail(userId, email, userName, options = {}) {
@@ -43,6 +43,7 @@ export async function sendPasswordSetupEmail(userId, email, userName, options = 
     templateKey = "RESET",
     empresaId = null,
     expiresInHours = templateKey === "FIRST_ACCESS" ? 24 * 7 : 1,
+    temporaryPassword = "",
   } = options;
 
   const baseUrl = process.env.FRONT_URL || "http://localhost:3000";
@@ -73,6 +74,8 @@ export async function sendPasswordSetupEmail(userId, email, userName, options = 
   const { subject, html } = renderWithData(template, {
     user_name: userName,
     user_email: email,
+    user: email, // usuário para login (email)
+    password: temporaryPassword, // senha temporária (FIRST_ACCESS)
     action_url: link,
     token_expires_in: tokenExpiresIn,
     company_name: empresaNome,

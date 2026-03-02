@@ -1,7 +1,19 @@
+import crypto from "crypto";
 import { db } from "../src/config/database.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
 import { sendPasswordSetupEmail } from "../src/controllers/auth.controller.js";
 import bcrypt from "bcryptjs";
+
+/** Gera senha temporária legível (12 chars, sem caracteres ambíguos) */
+function generateTemporaryPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let result = "";
+  const bytes = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -120,16 +132,20 @@ async function createUser(req, res) {
       return res.status(400).json({ message: "Email já cadastrado" });
     }
 
-    // Senha opcional: se fornecida, usar; senão criar sem senha e enviar email
-    let passwordHash = null;
-    let mustSetPassword = 1;
+    // Senha opcional: se fornecida, usar; senão gerar senha temporária e enviar email
+    let passwordHash;
+    let mustSetPassword = 0;
+    let temporaryPassword = null;
 
     if (password && String(password).trim() !== "") {
       passwordHash = await bcrypt.hash(password, 12);
-      mustSetPassword = 0;
+    } else {
+      temporaryPassword = generateTemporaryPassword();
+      passwordHash = await bcrypt.hash(temporaryPassword, 12);
+      mustSetPassword = 1;
     }
 
-    // Criar usuário (password NULL quando must_set_password)
+    // Criar usuário (sempre com password hash - nunca NULL)
     const [result] = await db.query(
       `INSERT INTO users (name, email, password, role_id, empresa_id, cpf, telefone, must_set_password)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -147,13 +163,14 @@ async function createUser(req, res) {
 
     const userId = result.insertId;
 
-    // Se sem senha: enviar email com link para definir (mesmo fluxo de "esqueci minha senha")
-    if (mustSetPassword === 1) {
+    // Se senha temporária: enviar email com credenciais + link para trocar
+    if (mustSetPassword === 1 && temporaryPassword) {
       try {
         await sendPasswordSetupEmail(userId, email, name, {
           templateKey: "FIRST_ACCESS",
           empresaId: empresa_id != null ? Number(empresa_id) : null,
           expiresInHours: 24 * 7, // 7 dias
+          temporaryPassword,
         });
       } catch (emailErr) {
         console.error("[createUser] Erro ao enviar email de boas-vindas:", emailErr);
