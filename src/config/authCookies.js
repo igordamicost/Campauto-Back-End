@@ -2,12 +2,29 @@
  * Configuração de cookies para refresh token.
  */
 
+import { domainToASCII } from "node:url";
+
 const COOKIE_NAME = "refresh_token";
 const COOKIE_SECURE = process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false";
 const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "lax";
-const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 const COOKIE_PATH = "/";
 const COOKIE_MAX_AGE_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 7;
+
+function getValidDomain() {
+  const raw = process.env.COOKIE_DOMAIN;
+  if (!raw || typeof raw !== "string") return undefined;
+  const d = raw.trim().toLowerCase();
+  if (!d) return undefined;
+  if (d.includes("://") || d.includes("/") || d.includes(":")) return undefined;
+  try {
+    const ascii = domainToASCII(d);
+    return ascii && ascii.length > 0 ? ascii : undefined;
+  } catch {
+    return /^[a-z0-9.-]+$/.test(d) ? d : undefined;
+  }
+}
+
+const COOKIE_DOMAIN = getValidDomain();
 
 export function getRefreshCookieOptions() {
   const opts = {
