@@ -40,6 +40,7 @@ const PREPOSICOES = [
 /** Colunas de texto usadas na busca concatenada */
 const SEARCH_COLUMNS = [
   "codigo_produto",
+  "codigo_fabrica",
   "codigo_barra",
   "codigo_referencia",
   "codigo_original",
