@@ -214,6 +214,42 @@
 
 /**
  * @openapi
+ * /orcamentos/{id}/enviar-email:
+ *   post:
+ *     summary: Envia orçamento por e-mail ao cliente (multipart com PDF)
+ *     tags: [Orçamentos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: PDF do orçamento
+ *               email:
+ *                 type: string
+ *                 description: E-mail override (opcional)
+ *     responses:
+ *       200:
+ *         description: E-mail enviado
+ *       400:
+ *         description: PDF ou e-mail do cliente ausente
+ *       404:
+ *         description: Orçamento não encontrado
+ */
+
+/**
+ * @openapi
  * /orcamentos/{id}:
  *   delete:
  *     summary: Remove orçamento

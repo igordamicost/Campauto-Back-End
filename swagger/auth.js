@@ -82,6 +82,35 @@
 
 /**
  * @openapi
+ * /auth/reset-password:
+ *   post:
+ *     summary: Redefinir senha com token (link do e-mail de recuperação)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, password]
+ *             properties:
+ *               token:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *               newPassword:
+ *                 type: string
+ *                 description: Alias de password
+ *     responses:
+ *       200:
+ *         description: Senha alterada com sucesso
+ *       400:
+ *         description: Token inválido ou senha fraca
+ */
+
+/**
+ * @openapi
  * /auth/set-password:
  *   post:
  *     summary: Define senha com token (primeiro acesso ou recuperação)

@@ -164,7 +164,7 @@
  * @openapi
  * /pedidos-compra/{id}/status:
  *   patch:
- *     summary: Atualizar status do pedido (ex.: cancelar)
+ *     summary: Atualizar status do pedido (ex. cancelar)
  *     tags: [Pedidos de Compra]
  *     security:
  *       - bearerAuth: []
