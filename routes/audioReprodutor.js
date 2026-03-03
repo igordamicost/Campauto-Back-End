@@ -33,10 +33,23 @@ router.use(audioReprodutorAuth);
 router.get("/files", asyncHandler(controller.listFiles));
 router.post(
   "/files",
-  upload.fields([
-    { name: "file", maxCount: 1 },
-    { name: "files", maxCount: 20 },
-  ]),
+  (req, res, next) => {
+    upload.fields([
+      { name: "file", maxCount: 1 },
+      { name: "files", maxCount: 20 },
+    ])(req, res, (err) => {
+      if (err) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ message: "Arquivo muito grande. Limite: 4 GB por arquivo." });
+        }
+        if (err.message === "Request aborted" || err.code === "ECONNABORTED") {
+          return res.status(408).json({ message: "Upload cancelado ou conexão interrompida. Verifique timeout do proxy (nginx) e do cliente." });
+        }
+        return next(err);
+      }
+      next();
+    });
+  },
   asyncHandler(controller.uploadFiles)
 );
 router.delete("/files/:id", asyncHandler(controller.deleteFile));
