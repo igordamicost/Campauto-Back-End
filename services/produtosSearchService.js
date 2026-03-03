@@ -85,9 +85,10 @@ export function getSearchTerms(q) {
  * Gera expressão SQL que normaliza um conjunto de colunas concatenadas
  * (LOWER + CONCAT_WS + REPLACE das preposições).
  * Usado para comparar com termos normalizados.
+ * @param {string[]} [columns] - Colunas a usar; se não informado, usa SEARCH_COLUMNS.
  */
-function buildNormalizedConcatSql() {
-  const concatParts = SEARCH_COLUMNS.map(
+function buildNormalizedConcatSql(columns = SEARCH_COLUMNS) {
+  const concatParts = columns.map(
     (c) => `COALESCE(\`${c}\`,'')`
   ).join(", ");
   let expr = `LOWER(CONCAT_WS(' ', ${concatParts}))`;
@@ -129,10 +130,20 @@ export async function listProdutosWithSearch(options = {}) {
 
   const terms = getSearchTerms(options.q);
   if (terms.length > 0) {
-    const normalizedExpr = buildNormalizedConcatSql();
+    // Usa apenas colunas que existem na tabela (inclui codigo_fabrica quando existir)
+    const searchColumns = SEARCH_COLUMNS.filter((c) => columns.includes(c));
+    const normalizedExpr = buildNormalizedConcatSql(searchColumns);
+    const hasCodigoFabrica = columns.includes("codigo_fabrica");
     terms.forEach((term) => {
-      whereParts.push(`${normalizedExpr} LIKE ?`);
+      // Busca normalizada (concat de todas as colunas)
+      const conds = [`${normalizedExpr} LIKE ?`];
       params.push(`%${term}%`);
+      // Busca direta em codigo_fabrica para códigos exatos (ex.: "ABC123")
+      if (hasCodigoFabrica) {
+        conds.push("LOWER(COALESCE(`codigo_fabrica`,'')) LIKE ?");
+        params.push(`%${term}%`);
+      }
+      whereParts.push(`(${conds.join(" OR ")})`);
     });
   }
 

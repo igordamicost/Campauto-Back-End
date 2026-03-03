@@ -32,8 +32,9 @@ export async function authMiddleware(req, res, next) {
     await enrichUserWithRole(payload);
     req.user = payload;
 
-    const method = (req.method || "").toUpperCase();
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && payload.sessionId) {
+    // Atualiza last_activity_at em TODAS as requisições autenticadas (incluindo GET)
+    // para que sessão não expire por inatividade enquanto o usuário está navegando
+    if (payload.sessionId) {
       await updateActivity(payload.sessionId).catch(() => {});
     }
     return next();

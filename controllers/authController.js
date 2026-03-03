@@ -212,4 +212,29 @@ async function logout(req, res) {
   return res.json({ message: "Logout realizado" });
 }
 
-export { login, getMe, refresh, logout };
+/**
+ * Keep-alive: atualiza last_activity_at e retorna novo access token.
+ * Usado pelo frontend para manter sessão ativa quando o usuário está usando o sistema.
+ * Não rotaciona o refresh token (mais leve que /auth/refresh).
+ */
+async function keepAlive(req, res) {
+  const user = req.user;
+  if (!user?.sessionId) {
+    return res.status(401).json({ message: "Sessão inválida" });
+  }
+
+  const accessToken = jwt.sign(
+    {
+      userId: user.userId,
+      roleId: user.roleId,
+      empresaId: user.empresaId ?? null,
+      sessionId: user.sessionId,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: `${ACCESS_TTL_MIN}m` }
+  );
+
+  return res.json({ token: accessToken });
+}
+
+export { login, getMe, refresh, logout, keepAlive };

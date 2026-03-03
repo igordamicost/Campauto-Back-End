@@ -25,6 +25,29 @@
 
 /**
  * @openapi
+ * /auth/keep-alive:
+ *   get:
+ *     summary: Keep-alive - renova access token e atualiza atividade
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Atualiza last_activity_at e retorna novo access token. Use a cada ~5 min quando o usuário está ativo.
+ *     responses:
+ *       200:
+ *         description: Novo token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *       401:
+ *         description: Token inválido ou expirado
+ */
+
+/**
+ * @openapi
  * /auth/refresh:
  *   post:
  *     summary: Renova access token usando refresh token (cookie HttpOnly)
