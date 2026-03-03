@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const UPLOAD_BASE = path.join(__dirname, "..");
 const UPLOAD_DIR = path.join(UPLOAD_BASE, "uploads/audio-reprodutor");
-const LIMIT_BYTES = 7 * 1024 * 1024 * 1024; // 7 GB
+const LIMIT_BYTES = 7_368_709_120; // 7 GB (7.368.709.120 bytes)
 
 function ensureUploadDir() {
   if (!fs.existsSync(UPLOAD_DIR)) {
