@@ -31,7 +31,7 @@ function originMatchesAllowed(origin, allowed) {
 
 /**
  * Middleware: valida Origin/Referer para requisições com credenciais.
- * Em desenvolvimento (NODE_ENV !== production), aceita qualquer origin.
+ * Em desenvolvimento (NODE_ENV !== production) ou origem localhost: aceita.
  */
 export function csrfAuthMiddleware(req, res, next) {
   if (process.env.NODE_ENV !== "production") {
@@ -42,6 +42,12 @@ export function csrfAuthMiddleware(req, res, next) {
   if (!origin) {
     return res.status(403).json({ message: "Origin/Referer ausente" });
   }
+
+  // Sempre permite localhost (para desenvolvimento local)
+  try {
+    const url = new URL(origin.toLowerCase());
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return next();
+  } catch {}
 
   if (ALLOWED_ORIGINS.length > 0) {
     const allowed = ALLOWED_ORIGINS.some((o) => originMatchesAllowed(origin, o));

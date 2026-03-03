@@ -46,6 +46,11 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
 function corsOrigin(origin, cb) {
   if (!origin) return cb(null, true); // requisições sem Origin (ex: Postman)
   const originNorm = origin.toLowerCase();
+  // Sempre permite localhost (para desenvolvimento local)
+  try {
+    const url = new URL(originNorm);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return cb(null, origin);
+  } catch {}
   if (CORS_ORIGINS.length === 0) return cb(null, origin); // sem restrição: reflete
   const allowed = CORS_ORIGINS.some((o) => {
     if (originNorm === o || originNorm.startsWith(o + "/")) return true;
