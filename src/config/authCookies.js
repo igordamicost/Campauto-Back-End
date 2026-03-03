@@ -6,7 +6,10 @@ import { domainToASCII } from "node:url";
 
 const COOKIE_NAME = "refresh_token";
 const COOKIE_SECURE = process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false";
-const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "lax";
+// Para cross-origin (frontend e API em domínios diferentes): use "none"
+const COOKIE_SAMESITE_RAW = (process.env.COOKIE_SAMESITE || "lax").toLowerCase();
+const COOKIE_SAMESITE =
+  COOKIE_SAMESITE_RAW === "none" ? "none" : COOKIE_SAMESITE_RAW === "strict" ? "strict" : "lax";
 const COOKIE_PATH = "/";
 const COOKIE_MAX_AGE_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 7;
 

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { domainToASCII } from "node:url";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./swagger.js";
 import client from "prom-client";
@@ -35,7 +36,33 @@ import menuRoutes from "./routes/menu.js";
 const app = express();
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: true, credentials: true }));
+
+// CORS: com credentials, Allow-Origin deve ser a origem exata (não *)
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim().toLowerCase())
+  .filter(Boolean);
+
+function corsOrigin(origin, cb) {
+  if (!origin) return cb(null, true); // requisições sem Origin (ex: Postman)
+  const originNorm = origin.toLowerCase();
+  if (CORS_ORIGINS.length === 0) return cb(null, origin); // sem restrição: reflete
+  const allowed = CORS_ORIGINS.some((o) => {
+    if (originNorm === o || originNorm.startsWith(o + "/")) return true;
+    try {
+      const oUrl = new URL(o.startsWith("http") ? o : `https://${o}`);
+      const reqUrl = new URL(originNorm);
+      const oPuny = domainToASCII(oUrl.hostname);
+      const reqPuny = domainToASCII(reqUrl.hostname);
+      return oPuny === reqPuny && oUrl.protocol === reqUrl.protocol;
+    } catch {
+      return false;
+    }
+  });
+  cb(null, allowed ? origin : false);
+}
+
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: "2mb" }));
 
