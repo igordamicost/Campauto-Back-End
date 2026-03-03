@@ -83,8 +83,26 @@ async function getMe(req, res) {
       const allItems = await MenuRepository.getAll();
       const permSet = new Set(userWithPermissions.permissions || []);
       const filtered = allItems.filter((item) => !item.permission || permSet.has(item.permission));
-      const tree = buildMenuTree(filtered, null);
-      menu = pruneEmptyParents(tree);
+      let tree = buildMenuTree(filtered, null);
+      tree = pruneEmptyParents(tree);
+
+      // Reprodutor de Áudio: apenas user_id 2 e 14
+      const userId = userWithPermissions.id;
+      if ([2, 14].includes(Number(userId))) {
+        menu = [
+          ...tree,
+          {
+            id: "reprodutor-audio",
+            label: "Reprodutor de Áudio",
+            path: "/dashboard/reprodutor-audio",
+            icon: "Music",
+            order: 999,
+            children: [],
+          },
+        ];
+      } else {
+        menu = tree;
+      }
     } catch (menuErr) {
       if (menuErr.code !== "ER_NO_SUCH_TABLE") console.warn("getMe menu:", menuErr.message);
     }

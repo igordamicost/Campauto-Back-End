@@ -32,6 +32,7 @@ import cotacoesCompraRoutes from "./routes/cotacoesCompra.js";
 import fornecedoresRoutes from "./routes/fornecedores.js";
 import pedidosCompraRoutes from "./routes/pedidosCompra.js";
 import menuRoutes from "./routes/menu.js";
+import audioReprodutorRoutes from "./routes/audioReprodutor.js";
 
 const app = express();
 
@@ -128,6 +129,7 @@ app.use("/financeiro", financeiroRoutes);
 app.use("/cotacoes-compra", cotacoesCompraRoutes);
 app.use("/fornecedores", fornecedoresRoutes);
 app.use("/pedidos-compra", pedidosCompraRoutes);
+app.use("/audio-reprodutor", audioReprodutorRoutes);
 app.use("/docs", swaggerUi.serve, (req, res, next) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const spec = {
