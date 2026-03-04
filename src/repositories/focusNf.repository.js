@@ -201,6 +201,52 @@ export class FocusNfRepository {
   }
 
   /**
+   * Obtém configuração fiscal completa para exibição (sem certificado).
+   * Retorna null se empresa não existir.
+   */
+  static async getConfigEmpresaCompleta(empresaId) {
+    const [rows] = await db.query(
+      `SELECT e.id AS empresa_id, e.nome_fantasia, e.razao_social, e.cnpj, e.endereco, e.cep, e.cidade, e.estado, e.email, e.telefone,
+              efc.token_focus, efc.ambiente, efc.webhook_secret, efc.cnpj AS cnpj_focus, efc.emite_nfe, efc.emite_nfse,
+              CASE WHEN efc.certificado_base64 IS NOT NULL AND TRIM(efc.certificado_base64) != '' THEN 1 ELSE 0 END AS certificado_configurado
+       FROM empresas e
+       LEFT JOIN empresas_focus_config efc ON efc.empresa_id = e.id
+       WHERE e.id = ? LIMIT 1`,
+      [empresaId]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Verifica se empresa possui configuração fiscal completa (token + certificado).
+   */
+  static async isConfiguracaoFiscalOk(empresaId) {
+    const [rows] = await db.query(
+      `SELECT 1 FROM empresas_focus_config
+       WHERE empresa_id = ? AND token_focus IS NOT NULL AND TRIM(token_focus) != ''
+         AND certificado_base64 IS NOT NULL AND TRIM(certificado_base64) != '' LIMIT 1`,
+      [empresaId]
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Retorna mapa empresa_id -> configuracao_fiscal_ok para múltiplas empresas.
+   */
+  static async getConfiguracaoFiscalStatusByEmpresaIds(empresaIds) {
+    if (!empresaIds?.length) return {};
+    const placeholders = empresaIds.map(() => "?").join(",");
+    const [rows] = await db.query(
+      `SELECT empresa_id FROM empresas_focus_config
+       WHERE empresa_id IN (${placeholders}) AND token_focus IS NOT NULL AND TRIM(token_focus) != ''
+         AND certificado_base64 IS NOT NULL AND TRIM(certificado_base64) != ''`,
+      empresaIds
+    );
+    const okSet = new Set(rows.map((r) => r.empresa_id));
+    return Object.fromEntries(empresaIds.map((id) => [id, okSet.has(id)]));
+  }
+
+  /**
    * Obtém CNPJ da empresa.
    */
   static async getCnpjEmpresa(empresaId) {

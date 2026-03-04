@@ -64,9 +64,11 @@
         { "label": "Produtos", "path": "/dashboard/estoque/produtos", "icon": "Boxes", "order": 0, "permission": "stock.read" },
         { "label": "Estoque / Saldos", "path": "/dashboard/estoque/saldos", "icon": "PackageSearch", "order": 1, "permission": "stock.read" },
         { "label": "Adicionar ao estoque", "path": "/dashboard/estoque/entrada", "icon": "PackagePlus", "order": 2, "permission": "stock.read" },
+        { "label": "Bipar Nota", "path": "/dashboard/estoque/bipar-nota", "icon": "ScanBarcode", "order": 2.5, "permission": "stock.read" },
         { "label": "Movimentações", "path": "/dashboard/estoque/movimentacoes", "icon": "ArrowUpDown", "order": 3, "permission": "stock.read" },
         { "label": "Reservas de Peça", "path": "/dashboard/estoque/reservas", "icon": "Calendar", "order": 4, "permission": "stock.read" },
         { "label": "Pedidos de Compra", "path": "/dashboard/estoque/compras", "icon": "ShoppingBag", "order": 5, "permission": "stock.read" },
+        { "label": "Compras (MDe)", "path": "/dashboard/estoque/compras-mde", "icon": "FileCheck", "order": 5.5, "permission": "stock.read" },
         { "label": "Fornecedores", "path": "/dashboard/estoque/fornecedores", "icon": "Truck", "order": 6, "permission": "stock.read" }
       ]
     },
@@ -83,6 +85,7 @@
         { "label": "Caixa/Bancos", "path": "/dashboard/financeiro/caixa", "icon": "Wallet", "order": 2, "permission": "finance.read" },
         { "label": "Fluxo de Caixa", "path": "/dashboard/financeiro/fluxo", "icon": "TrendingUp", "order": 3, "permission": "finance.read" },
         { "label": "Emitir Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/emitir", "icon": "FilePlus", "order": 4, "permission": "finance.read" },
+        { "label": "Notas Emitidas", "path": "/dashboard/financeiro/nota-fiscal/emitidas", "icon": "FileText", "order": 4.5, "permission": "finance.read" },
         { "label": "Buscar Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/buscar", "icon": "Search", "order": 5, "permission": "finance.read" },
         { "label": "Cancelar Nota Fiscal", "path": "/dashboard/financeiro/nota-fiscal/cancelar", "icon": "FileX", "order": 6, "permission": "finance.read" }
       ]
@@ -149,7 +152,7 @@
     "LayoutDashboard", "ShoppingCart", "UserCircle", "Wrench", "Package",
     "DollarSign", "FileText", "BarChart3", "Settings", "Users", "FileCheck",
     "ShoppingBag", "Building2", "Car", "ClipboardList", "Boxes", "PackageSearch",
-    "PackagePlus", "ArrowUpDown", "Calendar", "Receipt", "CreditCard",
+    "PackagePlus", "ScanBarcode", "ArrowUpDown", "Calendar", "Receipt", "CreditCard",
     "Wallet", "TrendingUp", "FilePlus", "Search", "FileX", "Shield", "Mail",
     "Layers", "Truck"
   ]

@@ -1,5 +1,6 @@
 import * as baseService from "../services/baseService.js";
 import { executarVerificacaoFiscalEmpresas } from "../src/services/empresasFiscalCheckJob.service.js";
+import { FocusNfRepository } from "../src/repositories/focusNf.repository.js";
 
 const TABLE = "empresas";
 
@@ -48,9 +49,17 @@ async function list(req, res) {
   const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
 
-  const mapped = Array.isArray(data)
-    ? data.map((row) => attachLogoToResponseRow(row))
-    : [];
+  let mapped = Array.isArray(data) ? data.map((row) => attachLogoToResponseRow(row)) : [];
+
+  if (mapped.length > 0) {
+    const ids = mapped.map((r) => r.id).filter(Boolean);
+    const statusMap = await FocusNfRepository.getConfiguracaoFiscalStatusByEmpresaIds(ids);
+    mapped = mapped.map((r) => ({
+      ...r,
+      configuracao_fiscal_ok: statusMap[r.id] ?? false,
+      configuracao_fiscal_pendente: !(statusMap[r.id] ?? false),
+    }));
+  }
 
   res.json({ data: mapped, page, perPage: limit, total, totalPages });
 }
@@ -58,7 +67,11 @@ async function list(req, res) {
 async function getById(req, res) {
   const item = await baseService.getById(TABLE, req.params.id);
   if (!item) return res.status(404).json({ message: "Not found" });
-  res.json(attachLogoToResponseRow(item));
+  const out = attachLogoToResponseRow(item);
+  const fiscalOk = await FocusNfRepository.isConfiguracaoFiscalOk(Number(req.params.id));
+  out.configuracao_fiscal_ok = fiscalOk;
+  out.configuracao_fiscal_pendente = !fiscalOk;
+  res.json(out);
 }
 
 async function create(req, res) {
@@ -71,7 +84,10 @@ async function create(req, res) {
   const id = await baseService.create(TABLE, payload);
   if (!id) return res.status(409).json({ message: "Duplicate or invalid" });
   dispararJobVerificacaoFiscal();
-  res.status(201).json({ id });
+
+  const created = await baseService.getById(TABLE, id);
+  const out = created ? attachLogoToResponseRow(created) : { id };
+  res.status(201).json(out);
 }
 
 async function update(req, res) {

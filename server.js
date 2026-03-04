@@ -11,6 +11,7 @@ import { verifyEmailConnection } from "./src/config/email.js";
 import { ReservationSchedulerService } from "./src/services/reservationScheduler.service.js";
 import { MigrationService } from "./src/services/migration.service.js";
 import { startSessionCleanupJob } from "./src/services/sessionCleanupJob.js";
+import { startEmpresasFiscalCheckScheduler } from "./src/services/empresasFiscalCheckScheduler.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -48,6 +49,17 @@ async function bootstrap() {
     }
   } catch (error) {
     console.warn("⚠️  Erro ao iniciar job de sessões:", error.message);
+  }
+
+  // Job de verificação fiscal de empresas (na inicialização + a cada hora)
+  try {
+    const empresasExist = await MigrationService.tableExists("empresas");
+    const configExist = await MigrationService.tableExists("empresas_focus_config");
+    if (empresasExist && configExist) {
+      startEmpresasFiscalCheckScheduler();
+    }
+  } catch (error) {
+    console.warn("⚠️  Erro ao iniciar job de verificação fiscal:", error.message);
   }
 
   app.listen(PORT, () => {

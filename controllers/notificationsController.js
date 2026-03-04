@@ -3,8 +3,22 @@ import { NotificationRepository } from "../src/repositories/notification.reposit
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
+function mapNotificationToResponse(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    isRead: Boolean(row.is_read),
+    readAt: row.read_at || null,
+    createdAt: row.created_at,
+    metadata: row.metadata,
+  };
+}
+
 /**
  * Lista notificações do usuário logado
+ * Query: isRead (boolean), limit, offset
  */
 async function listNotifications(req, res) {
   try {
@@ -13,13 +27,16 @@ async function listNotifications(req, res) {
 
     const filters = {
       isRead: isRead !== undefined ? isRead === "true" : undefined,
-      limit: Math.max(1, Math.min(1000, parseInt(limit) || 50)),
-      offset: Math.max(0, parseInt(offset) || 0),
+      limit: Math.max(1, Math.min(1000, parseInt(limit, 10) || 50)),
+      offset: Math.max(0, parseInt(offset, 10) || 0),
     };
 
     const result = await NotificationRepository.getUserNotifications(userId, filters);
 
-    return res.json(result);
+    return res.json({
+      data: (result.data || []).map(mapNotificationToResponse),
+      total: result.total ?? 0,
+    });
   } catch (error) {
     console.error("Error listing notifications:", error);
     return res.status(500).json({ message: "Erro ao listar notificações" });

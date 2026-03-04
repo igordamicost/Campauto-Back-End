@@ -15,9 +15,18 @@ async function configuracaoFiscal(req, res) {
   const {
     cnpj,
     razao_social,
+    nome_fantasia,
     inscricao_estadual,
     inscricao_municipal,
     regime_tributario,
+    logradouro,
+    numero,
+    bairro,
+    cep,
+    municipio,
+    uf,
+    email,
+    telefone,
     arquivo_certificado_base64,
     senha_certificado,
     habilita_nfe,
@@ -28,49 +37,51 @@ async function configuracaoFiscal(req, res) {
     webhook_secret,
   } = req.body;
 
+  const empId = empresa_id ? Number(empresa_id) : null;
+  if (!empId) {
+    return res.status(400).json({ message: "empresa_id é obrigatório" });
+  }
+
   if (!cnpj || !razao_social) {
     return res.status(400).json({ message: "cnpj e razao_social são obrigatórios" });
   }
 
-  const token = token_focus || (empresa_id ? (await FocusNfRepository.getTokenEmpresa(empresa_id)) : null);
+  const token = token_focus || (await FocusNfRepository.getTokenEmpresa(empId));
   if (!token) {
     return res.status(400).json({ message: "token_focus é obrigatório. Configure via tela de Configuração Fiscal." });
   }
 
   const cnpjLimpo = String(cnpj).replace(/\D/g, "");
-  let empresa = null;
-  if (empresa_id) {
-    const [rows] = await db.query(
-      "SELECT id, nome_fantasia, razao_social, cnpj, endereco, cep, email, cidade, telefone, estado FROM empresas WHERE id = ?",
-      [empresa_id]
-    );
-    empresa = rows[0];
-  }
-  if (!empresa && cnpjLimpo) {
-    const [rows] = await db.query(
-      "SELECT id, nome_fantasia, razao_social, cnpj, endereco, cep, email, cidade, telefone, estado FROM empresas WHERE REPLACE(REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-',''),' ','') LIKE ? LIMIT 1",
-      [`%${cnpjLimpo}%`]
-    );
-    empresa = rows[0];
+  const [empRows] = await db.query(
+    "SELECT id, nome_fantasia, razao_social, cnpj, endereco, cep, email, cidade, telefone, estado FROM empresas WHERE id = ?",
+    [empId]
+  );
+  const empresa = empRows[0];
+  if (!empresa) {
+    return res.status(404).json({ message: "Empresa não encontrada" });
   }
 
-  const endereco = empresa?.endereco || "";
-  const [logradouro, numero = "S/N"] = endereco.split(",").map((s) => s.trim());
+  const enderecoAtual = empresa.endereco || "";
+  const [logradouroAtual, numeroAtual] = enderecoAtual.split(",").map((s) => s.trim());
+  const logr = (logradouro || logradouroAtual || "").trim() || "Endereço";
+  const num = (numero || numeroAtual || "S/N").toString().replace(/\D/g, "") || "0";
+  const enderecoMontado = `${logr}, ${num}`;
+
   const payload = {
     cnpj: cnpjLimpo,
     nome: razao_social,
-    nome_fantasia: empresa?.nome_fantasia || razao_social,
+    nome_fantasia: nome_fantasia || empresa.nome_fantasia || razao_social,
     inscricao_estadual: String(inscricao_estadual || "").trim() || "0",
     inscricao_municipal: String(inscricao_municipal || "").trim() || "0",
     regime_tributario: Number(regime_tributario) || 1,
-    email: empresa?.email || "contato@empresa.com.br",
-    telefone: (empresa?.telefone || "").replace(/\D/g, "").slice(0, 11) || "11999999999",
-    logradouro: logradouro || "Endereço",
-    numero: numero.replace(/\D/g, "") || "0",
-    bairro: "Centro",
-    cep: (empresa?.cep || "").replace(/\D/g, "").slice(0, 8) || "79000000",
-    municipio: empresa?.cidade || "Campo Grande",
-    uf: empresa?.estado || "MS",
+    email: (email || empresa.email || "").trim() || "contato@empresa.com.br",
+    telefone: (telefone || empresa.telefone || "").replace(/\D/g, "").slice(0, 11) || "11999999999",
+    logradouro: logr,
+    numero: num,
+    bairro: (bairro || "").trim() || "Centro",
+    cep: (cep || empresa.cep || "").replace(/\D/g, "").slice(0, 8) || "79000000",
+    municipio: (municipio || empresa.cidade || "").trim() || "Campo Grande",
+    uf: (uf || empresa.estado || "").trim().slice(0, 2) || "MS",
     arquivo_certificado_base64: arquivo_certificado_base64 || undefined,
     senha_certificado: senha_certificado || undefined,
     habilita_nfe: Boolean(habilita_nfe),
@@ -83,15 +94,28 @@ async function configuracaoFiscal(req, res) {
     return res.status(status).json(data || { message: "Erro na API Focus" });
   }
 
-  const empId = empresa?.id || empresa_id;
-  if (empId) {
-    await db.query(
-      `INSERT INTO empresas_focus_config (empresa_id, token_focus, ambiente, webhook_secret, certificado_base64, emite_nfe, emite_nfse, cnpj)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE token_focus = VALUES(token_focus), ambiente = VALUES(ambiente), webhook_secret = VALUES(webhook_secret),
-         certificado_base64 = VALUES(certificado_base64), emite_nfe = VALUES(emite_nfe), emite_nfse = VALUES(emite_nfse), cnpj = VALUES(cnpj)`,
-      [empId, token, amb, webhook_secret || null, arquivo_certificado_base64 || null, payload.habilita_nfe ? 1 : 0, payload.habilita_nfse ? 1 : 0, cnpjLimpo]
-    );
+  await db.query(
+    `INSERT INTO empresas_focus_config (empresa_id, token_focus, ambiente, webhook_secret, certificado_base64, emite_nfe, emite_nfse, cnpj)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE token_focus = VALUES(token_focus), ambiente = VALUES(ambiente), webhook_secret = VALUES(webhook_secret),
+       certificado_base64 = COALESCE(VALUES(certificado_base64), certificado_base64), emite_nfe = VALUES(emite_nfe), emite_nfse = VALUES(emite_nfse), cnpj = VALUES(cnpj)`,
+    [empId, token, amb, webhook_secret || null, arquivo_certificado_base64 || null, payload.habilita_nfe ? 1 : 0, payload.habilita_nfse ? 1 : 0, cnpjLimpo]
+  );
+
+  const updatesEmpresa = {};
+  if (nome_fantasia !== undefined) updatesEmpresa.nome_fantasia = nome_fantasia;
+  if (razao_social !== undefined) updatesEmpresa.razao_social = razao_social;
+  if (cnpj !== undefined) updatesEmpresa.cnpj = cnpj;
+  if (logradouro !== undefined || numero !== undefined) updatesEmpresa.endereco = enderecoMontado;
+  if (cep !== undefined) updatesEmpresa.cep = cep;
+  if (municipio !== undefined) updatesEmpresa.cidade = municipio;
+  if (uf !== undefined) updatesEmpresa.estado = uf;
+  if (email !== undefined) updatesEmpresa.email = email;
+  if (telefone !== undefined) updatesEmpresa.telefone = telefone;
+
+  if (Object.keys(updatesEmpresa).length > 0) {
+    const setSql = Object.keys(updatesEmpresa).map((c) => `\`${c}\` = ?`).join(", ");
+    await db.query(`UPDATE empresas SET ${setSql} WHERE id = ?`, [...Object.values(updatesEmpresa), empId]);
   }
 
   res.json({ success: true, data });
@@ -573,20 +597,29 @@ async function vincularPedido(req, res) {
 // --- Obter configuração Focus (para o front carregar o formulário) ---
 async function obterConfiguracaoFiscal(req, res) {
   const empresaId = Number(req.query.empresa_id) || req.user?.empresa_id || 1;
-  const config = await FocusNfRepository.getConfigEmpresa(empresaId);
-  if (!config) {
-    return res.json({
-      token_focus: null,
-      ambiente: "homologacao",
-      webhook_secret: null,
-      configurado: false,
-    });
+  const row = await FocusNfRepository.getConfigEmpresaCompleta(empresaId);
+  if (!row) {
+    return res.status(404).json({ message: "Empresa não encontrada" });
   }
+  const cnpjVal = row.cnpj_focus || row.cnpj;
   res.json({
-    token_focus: config.token_focus ? "***" : null,
-    ambiente: config.ambiente || "homologacao",
-    webhook_secret: config.webhook_secret ? "***" : null,
-    configurado: !!config.token_focus,
+    empresa_id: row.empresa_id,
+    cnpj: cnpjVal ? String(cnpjVal).replace(/\D/g, "").padStart(14, "0") : null,
+    razao_social: row.razao_social,
+    nome_fantasia: row.nome_fantasia,
+    token_focus: row.token_focus ? "***" : null,
+    ambiente: row.ambiente || "homologacao",
+    webhook_secret: row.webhook_secret ? "***" : null,
+    configurado: !!(row.token_focus && String(row.token_focus).trim()),
+    certificado_configurado: !!row.certificado_configurado,
+    habilita_nfe: Boolean(row.emite_nfe),
+    habilita_nfse: Boolean(row.emite_nfse),
+    endereco: row.endereco,
+    cep: row.cep,
+    cidade: row.cidade,
+    estado: row.estado,
+    email: row.email,
+    telefone: row.telefone,
   });
 }
 
