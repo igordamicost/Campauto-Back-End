@@ -111,4 +111,24 @@ export class NotificationRepository {
     );
     return rows;
   }
+
+  /**
+   * Busca usuários com permissão admin.companies.manage (podem gerenciar empresas).
+   * Usado para notificações de configuração fiscal incompleta.
+   */
+  static async getUsersWithCompaniesPermission() {
+    try {
+      const [rows] = await db.query(
+        `SELECT DISTINCT u.id, u.name, u.email
+         FROM users u
+         INNER JOIN role_permissions rp ON rp.role_id = u.role_id
+         INNER JOIN permissions p ON p.id = rp.permission_id
+         WHERE p.\`key\` = 'admin.companies.manage'
+         ORDER BY u.name`
+      );
+      return rows;
+    } catch (err) {
+      return [];
+    }
+  }
 }

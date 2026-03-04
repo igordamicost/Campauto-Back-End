@@ -72,17 +72,16 @@ function obterCamposFaltantes(empresa, config) {
 }
 
 /**
- * Verifica se já existe notificação recente (evitar spam a cada hora).
+ * Retorna IDs de usuários que já receberam esta notificação nas últimas 23h.
  */
-async function notificacaoRecenteExiste() {
+async function getUserIdsComNotificacaoRecente() {
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT 1 FROM notifications
-     WHERE type = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 23 HOUR)
-     LIMIT 1`,
+    `SELECT DISTINCT user_id FROM notifications
+     WHERE type = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 23 HOUR)`,
     [NOTIFICATION_TYPE]
   );
-  return rows.length > 0;
+  return new Set(rows.map((r) => r.user_id));
 }
 
 /**
@@ -132,14 +131,18 @@ export async function executarVerificacaoFiscalEmpresas() {
     return { ok: true, incompletas: [] };
   }
 
-  // Evitar notificações duplicadas a cada hora
-  if (await notificacaoRecenteExiste()) {
-    return { ok: false, incompletas, notificacaoOmitida: true };
+  let recipients = await NotificationRepository.getUsersWithCompaniesPermission();
+  if (recipients.length === 0) {
+    recipients = await NotificationRepository.getManagers();
+  }
+  if (recipients.length === 0) {
+    return { ok: false, incompletas };
   }
 
-  const managers = await NotificationRepository.getManagers();
-  if (managers.length === 0) {
-    return { ok: false, incompletas };
+  const userIdsComNotificacaoRecente = await getUserIdsComNotificacaoRecente();
+  recipients = recipients.filter((r) => !userIdsComNotificacaoRecente.has(r.id));
+  if (recipients.length === 0) {
+    return { ok: false, incompletas, notificacaoOmitida: true };
   }
 
   const nomesIncompletas = incompletas.map((e) => e.nome).join(", ");
@@ -156,9 +159,9 @@ export async function executarVerificacaoFiscalEmpresas() {
       ? `A empresa "${nomesIncompletas}" não possui todos os dados fiscais e certificado configurados.\n\nFaltando: ${incompletas[0].faltando.map((f) => CAMPOS_VERIFICADOS[f] || f).join(", ")}\n\nAcesse Configuração Fiscal e o cadastro da empresa para preencher.`
       : `${incompletas.length} empresas com configuração fiscal incompleta:\n\n${detalhes}\n\nAcesse Configuração Fiscal e o cadastro de cada empresa para preencher.`;
 
-  for (const manager of managers) {
+  for (const recipient of recipients) {
     await NotificationRepository.create({
-      user_id: manager.id,
+      user_id: recipient.id,
       type: NOTIFICATION_TYPE,
       title,
       message,
