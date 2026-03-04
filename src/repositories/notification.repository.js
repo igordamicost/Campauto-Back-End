@@ -51,8 +51,11 @@ export class NotificationRepository {
     const parseMetadata = (val) => {
       if (val == null) return null;
       if (typeof val === "object") return val;
+      if (typeof val !== "string") return null;
+      const s = val.trim();
+      if (!s || s === "[object Object]" || (s[0] !== "{" && s[0] !== "[")) return null;
       try {
-        return typeof val === "string" ? JSON.parse(val) : null;
+        return JSON.parse(val);
       } catch {
         return null;
       }
