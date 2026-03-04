@@ -48,12 +48,22 @@ export class NotificationRepository {
       params
     );
 
+    const parseMetadata = (val) => {
+      if (val == null) return null;
+      if (typeof val === "object") return val;
+      try {
+        return typeof val === "string" ? JSON.parse(val) : null;
+      } catch {
+        return null;
+      }
+    };
+
     return {
       data: rows.map((row) => ({
         ...row,
-        metadata: row.metadata ? JSON.parse(row.metadata) : null,
+        metadata: parseMetadata(row.metadata),
       })),
-      total: countRow.total,
+      total: Number(countRow?.total ?? countRow?.cnt ?? 0),
     };
   }
 

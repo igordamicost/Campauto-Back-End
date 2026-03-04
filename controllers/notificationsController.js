@@ -22,7 +22,10 @@ function mapNotificationToResponse(row) {
  */
 async function listNotifications(req, res) {
   try {
-    const userId = req.user.userId;
+    const userId = req.user?.userId ?? req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Não autenticado" });
+    }
     const { isRead, limit = 50, offset = 0 } = req.query;
 
     const filters = {
@@ -38,8 +41,11 @@ async function listNotifications(req, res) {
       total: result.total ?? 0,
     });
   } catch (error) {
-    console.error("Error listing notifications:", error);
-    return res.status(500).json({ message: "Erro ao listar notificações" });
+    console.error("Error listing notifications:", error?.message || error);
+    return res.status(500).json({
+      message: "Erro ao listar notificações",
+      ...(process.env.NODE_ENV === "development" && { detail: error?.message }),
+    });
   }
 }
 
