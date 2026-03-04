@@ -1,6 +1,13 @@
 import * as baseService from "../services/baseService.js";
+import { executarVerificacaoFiscalEmpresas } from "../src/services/empresasFiscalCheckJob.service.js";
 
 const TABLE = "empresas";
+
+function dispararJobVerificacaoFiscal() {
+  executarVerificacaoFiscalEmpresas().catch((err) => {
+    console.error("[empresasFiscalCheckJob] Erro ao verificar empresas:", err?.message || err);
+  });
+}
 
 function normalizeLogoFromBody(body = {}) {
   const normalized = { ...body };
@@ -63,6 +70,7 @@ async function create(req, res) {
 
   const id = await baseService.create(TABLE, payload);
   if (!id) return res.status(409).json({ message: "Duplicate or invalid" });
+  dispararJobVerificacaoFiscal();
   res.status(201).json({ id });
 }
 
@@ -76,6 +84,7 @@ async function update(req, res) {
 async function remove(req, res) {
   const ok = await baseService.remove(TABLE, req.params.id);
   if (!ok) return res.status(404).json({ message: "Not found" });
+  dispararJobVerificacaoFiscal();
   res.json({ message: "Deleted" });
 }
 
