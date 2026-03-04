@@ -4,13 +4,14 @@ import {
   DEFAULT_RESET,
   DEFAULT_SUPPLIER_ORDER,
   DEFAULT_CLIENT_QUOTE,
+  DEFAULT_NOTA_FISCAL,
 } from "../constants/defaultEmailTemplates.js";
 
 async function ensureTable(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS email_templates (
       id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      template_key ENUM('FIRST_ACCESS','RESET','SUPPLIER_ORDER','CLIENT_QUOTE') NOT NULL,
+      template_key ENUM('FIRST_ACCESS','RESET','SUPPLIER_ORDER','CLIENT_QUOTE','NOTA_FISCAL') NOT NULL,
       name VARCHAR(120) NOT NULL,
       subject VARCHAR(160) NOT NULL,
       html_body MEDIUMTEXT NOT NULL,
@@ -31,6 +32,7 @@ async function seedEmailTemplates() {
     { key: "RESET", def: DEFAULT_RESET },
     { key: "SUPPLIER_ORDER", def: DEFAULT_SUPPLIER_ORDER },
     { key: "CLIENT_QUOTE", def: DEFAULT_CLIENT_QUOTE },
+    { key: "NOTA_FISCAL", def: DEFAULT_NOTA_FISCAL },
   ];
 
   for (const { key, def } of defaults) {

@@ -119,3 +119,31 @@ export const DEFAULT_CLIENT_QUOTE = {
 </html>
 `.trim(),
 };
+
+/**
+ * NOTA_FISCAL: {{nota_numero}}, {{empresa_emitente_nome}}, {{empresa_emitente_cnpj}},
+ * {{cliente_nome}}, {{valor_total}}, {{nota_chave}}, {{empresa_por_qual}}
+ */
+export const DEFAULT_NOTA_FISCAL = {
+  name: "Nota Fiscal - Padrão",
+  subject: "Nota Fiscal {{nota_numero}} - {{empresa_emitente_nome}}",
+  html_body: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="text-align:center;margin-bottom:16px">{{company_header_html}}</div>
+    <h2 style="margin:0 0 8px;color:#333;font-size:20px">Nota Fiscal {{nota_numero}}</h2>
+    <p style="margin:0 0 8px;color:#555;line-height:1.6">Prezado(a) {{cliente_nome}},</p>
+    <p style="margin:0 0 8px;color:#555;line-height:1.6">
+      Segue em anexo a Nota Fiscal emitida por <strong>{{empresa_emitente_nome}}</strong> (CNPJ {{empresa_emitente_cnpj}}).
+    </p>
+    <p style="margin:0 0 8px;color:#555;line-height:1.6"><strong>Valor total:</strong> {{valor_total}}</p>
+    <p style="margin:0 0 8px;color:#555;line-height:1.6"><strong>Chave de acesso:</strong> {{nota_chave}}</p>
+    <p style="margin:16px 0 0;color:#888;font-size:12px">Atenciosamente,<br>{{empresa_por_qual}}</p>
+  </div>
+</body>
+</html>
+`.trim(),
+};

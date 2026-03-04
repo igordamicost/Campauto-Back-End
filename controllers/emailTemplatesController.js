@@ -5,17 +5,19 @@ import {
   DEFAULT_RESET,
   DEFAULT_SUPPLIER_ORDER,
   DEFAULT_CLIENT_QUOTE,
+  DEFAULT_NOTA_FISCAL,
 } from "../src/constants/defaultEmailTemplates.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
 import { sendEmail, sendEmailWithInlineLogo, buildCompanyHeaderHtml } from "../src/services/email.service.js";
 import { loadLogo } from "../src/services/logoLoader.js";
 
-const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET", "SUPPLIER_ORDER", "CLIENT_QUOTE"];
+const TEMPLATE_KEYS = ["FIRST_ACCESS", "RESET", "SUPPLIER_ORDER", "CLIENT_QUOTE", "NOTA_FISCAL"];
 const DEFAULTS = {
   FIRST_ACCESS: DEFAULT_FIRST_ACCESS,
   RESET: DEFAULT_RESET,
   SUPPLIER_ORDER: DEFAULT_SUPPLIER_ORDER,
   CLIENT_QUOTE: DEFAULT_CLIENT_QUOTE,
+  NOTA_FISCAL: DEFAULT_NOTA_FISCAL,
 };
 
 const putSchema = z.object({
@@ -64,6 +66,13 @@ function buildMockData() {
     tabela_itens: tabelaItensMock,
     observacoes: "Urgente",
     observacoes_html: "<p style=\"margin:12px 0 0;color:#555;line-height:1.6\"><strong>Observações:</strong> Urgente</p>",
+    nota_numero: "12345",
+    empresa_emitente_nome: "JR Car Peças",
+    empresa_emitente_cnpj: "12.345.678/0001-90",
+    cliente_nome: "Cliente Exemplo",
+    valor_total: "R$ 1.234,56",
+    nota_chave: "35240312345678000190550010000123451234567890",
+    empresa_por_qual: "JR Car Peças",
   };
 }
 
@@ -109,7 +118,7 @@ async function update(req, res) {
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
     return res.status(400).json({
-      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER ou CLIENT_QUOTE",
+      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE ou NOTA_FISCAL",
     });
   }
 
@@ -159,7 +168,7 @@ async function preview(req, res) {
 
   if (!TEMPLATE_KEYS.includes(templateKey)) {
     return res.status(400).json({
-      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER ou CLIENT_QUOTE",
+      message: "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE ou NOTA_FISCAL",
     });
   }
 
@@ -191,6 +200,14 @@ async function preview(req, res) {
     mock.action_url = `${baseUrl}/recuperar-senha?token=TESTE`;
   } else if (templateKey === "FIRST_ACCESS") {
     mock.action_url = `${baseUrl}/definir-senha?token=TESTE`;
+  } else if (templateKey === "NOTA_FISCAL") {
+    mock.nota_numero = "12345";
+    mock.empresa_emitente_nome = mock.company_name;
+    mock.empresa_emitente_cnpj = "12.345.678/0001-90";
+    mock.cliente_nome = "Cliente Exemplo";
+    mock.valor_total = "R$ 1.234,56";
+    mock.nota_chave = "35240312345678000190550010000123451234567890";
+    mock.empresa_por_qual = mock.company_name;
   }
 
   const renderedSubject = renderTemplate(subject, mock);
@@ -209,7 +226,7 @@ async function testTemplate(req, res) {
   if (!TEMPLATE_KEYS.includes(templateKey)) {
     return res.status(400).json({
       message:
-        "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER ou CLIENT_QUOTE",
+        "templateKey inválido. Use FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE ou NOTA_FISCAL",
     });
   }
 
@@ -284,6 +301,13 @@ async function testTemplate(req, res) {
     quote_valid_until: "10/03/2026",
     client_name: "Cliente Teste",
     quote_total: "R$ 999,99",
+    nota_numero: "12345",
+    empresa_emitente_nome: companyName,
+    empresa_emitente_cnpj: "12.345.678/0001-90",
+    cliente_nome: "Cliente Teste",
+    valor_total: "R$ 999,99",
+    nota_chave: "35240312345678000190550010000123451234567890",
+    empresa_por_qual: companyName,
   };
 
   const safeHtml = stripScript(tpl.html_body);

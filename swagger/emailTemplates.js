@@ -2,7 +2,7 @@
  * @openapi
  * /email-templates:
  *   get:
- *     summary: Lista templates de e-mail (FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE)
+ *     summary: Lista templates de e-mail (FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE, NOTA_FISCAL)
  *     tags: [Email Templates]
  *     security:
  *       - bearerAuth: []
@@ -25,7 +25,7 @@
  *         required: true
  *         schema:
  *           type: string
- *           enum: [FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE]
+ *           enum: [FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE, NOTA_FISCAL]
  *     requestBody:
  *       required: true
  *       content:
@@ -62,7 +62,7 @@
  *         required: true
  *         schema:
  *           type: string
- *           enum: [FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE]
+ *           enum: [FIRST_ACCESS, RESET, SUPPLIER_ORDER, CLIENT_QUOTE, NOTA_FISCAL]
  *     requestBody:
  *       required: true
  *       content:

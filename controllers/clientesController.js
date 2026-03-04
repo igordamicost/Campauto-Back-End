@@ -3,6 +3,10 @@ import { listClientesWithSearch } from "../services/clientesSearchService.js";
 
 const TABLE = 'clientes';
 
+function attachEmailFiscalConfigurado(item) {
+  return { ...item, email_fiscal_configurado: !!(item.email_fiscal && String(item.email_fiscal).trim()) };
+}
+
 async function list(req, res) {
   const limit = Number(req.query.limit || req.query.perPage || 10);
   const page = Math.max(1, Number(req.query.page || 1));
@@ -19,7 +23,7 @@ async function list(req, res) {
     });
     const totalPages = Math.ceil(total / limit) || 1;
     return res.json({
-      data,
+      data: (data || []).map(attachEmailFiscalConfigurado),
       page,
       perPage: limit,
       total,
@@ -30,13 +34,19 @@ async function list(req, res) {
   // Caso contrário, usa busca padrão
   const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
-  res.json({ data, page, perPage: limit, total, totalPages });
+  res.json({
+    data: (data || []).map(attachEmailFiscalConfigurado),
+    page,
+    perPage: limit,
+    total,
+    totalPages,
+  });
 }
 
 async function getById(req, res) {
   const item = await baseService.getById(TABLE, req.params.id);
   if (!item) return res.status(404).json({ message: 'Not found' });
-  res.json(item);
+  res.json(attachEmailFiscalConfigurado(item));
 }
 
 async function create(req, res) {

@@ -32,6 +32,14 @@ const PLACEHOLDERS = [
   "tabela_itens",
   "observacoes",
   "observacoes_html",
+  // NOTA_FISCAL
+  "nota_numero",
+  "empresa_emitente_nome",
+  "empresa_emitente_cnpj",
+  "cliente_nome",
+  "valor_total",
+  "nota_chave",
+  "empresa_por_qual",
 ];
 
 /**
