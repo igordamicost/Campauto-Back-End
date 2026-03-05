@@ -338,57 +338,6 @@ export class StockRepository {
   }
 
   /**
-   * Sincroniza espelho: cria StockItem (stock_balances) para produtos sem registro por empresa
-   * Body: { empresa_ids?, product_ids? }
-   */
-  static async syncMirror(empresaIds = [], productIds = []) {
-    const connection = await db.getConnection();
-    try {
-      let empresas = [];
-      if (empresaIds && empresaIds.length > 0) {
-        empresas = empresaIds.map(Number).filter(Boolean);
-      } else {
-        const [empRows] = await connection.query("SELECT id FROM empresas");
-        empresas = empRows.map((r) => r.id);
-      }
-
-      let produtos = [];
-      if (productIds && productIds.length > 0) {
-        produtos = productIds.map(Number).filter(Boolean);
-      } else {
-        const [prodRows] = await connection.query("SELECT id FROM produtos");
-        produtos = prodRows.map((r) => r.id);
-      }
-
-      if (empresas.length === 0 || produtos.length === 0) {
-        return { created: 0, message: "Nenhuma empresa ou produto para sincronizar" };
-      }
-
-      let created = 0;
-      for (const empId of empresas) {
-        for (const prodId of produtos) {
-          const [existing] = await connection.query(
-            "SELECT id FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
-            [prodId, empId]
-          );
-          if (existing.length === 0) {
-            await connection.query(
-              `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-               VALUES (?, ?, 0, 0)`,
-              [prodId, empId]
-            );
-            created++;
-          }
-        }
-      }
-
-      return { created, message: `${created} registros criados` };
-    } finally {
-      connection.release();
-    }
-  }
-
-  /**
    * Busca produto por código de barras (codigo_barra)
    */
   static async getProductByBarcode(barcode) {

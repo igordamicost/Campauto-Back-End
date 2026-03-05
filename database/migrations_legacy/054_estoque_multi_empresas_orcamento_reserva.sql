@@ -106,7 +106,18 @@ ALTER TABLE reservations MODIFY COLUMN status ENUM(
   'draft','sent_to_customer','awaiting_signature','signed','delivered','closed','canceled'
 ) NOT NULL DEFAULT 'ACTIVE';
 
--- 8) Sales Log
+-- 8) Espelho automático: popular stock_balances (produto×empresa) para combinações inexistentes
+-- Substitui o endpoint sync-mirror — executa na migration ao publicar
+INSERT IGNORE INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
+SELECT p.id, e.id, 0, 0
+FROM produtos p
+CROSS JOIN empresas e
+WHERE NOT EXISTS (
+  SELECT 1 FROM stock_balances sb
+  WHERE sb.product_id = p.id AND sb.empresa_id = e.id
+);
+
+-- 9) Sales Log
 CREATE TABLE IF NOT EXISTS sales_log (
   id INT PRIMARY KEY AUTO_INCREMENT,
   tipo ENUM('intencao','venda','movimentacao','pre_pedido','reserva') NOT NULL,

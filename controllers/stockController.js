@@ -267,24 +267,6 @@ async function getOrcamentosByProduct(req, res) {
   }
 }
 
-/**
- * Sincroniza espelho: cria StockItem para produtos sem registro por empresa
- * Body: { empresa_ids?, product_ids? }
- */
-async function syncMirror(req, res) {
-  try {
-    const { empresa_ids, product_ids } = req.body || {};
-    const result = await StockRepository.syncMirror(
-      Array.isArray(empresa_ids) ? empresa_ids : undefined,
-      Array.isArray(product_ids) ? product_ids : undefined
-    );
-    return res.json(result);
-  } catch (error) {
-    console.error("Error syncing stock mirror:", error);
-    return res.status(500).json({ message: "Erro ao sincronizar espelho" });
-  }
-}
-
 export default {
   listBalances: asyncHandler(listBalances),
   listMovements: asyncHandler(listMovements),
@@ -294,5 +276,4 @@ export default {
   importXml: asyncHandler(importXml),
   checkAvailability: asyncHandler(checkAvailability),
   getOrcamentosByProduct: asyncHandler(getOrcamentosByProduct),
-  syncMirror: asyncHandler(syncMirror),
 };

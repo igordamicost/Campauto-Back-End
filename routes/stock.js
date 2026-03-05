@@ -17,9 +17,6 @@ router.get("/balances", requirePermission("stock.read"), stockController.listBal
 router.get("/movements", requirePermission("stock.read"), stockController.listMovements);
 router.get("/availability/:productId", requirePermission("stock.read"), stockController.checkAvailability);
 
-// Sincroniza espelho produto→estoque por empresa
-router.post("/sync-mirror", requirePermission("stock.move"), stockController.syncMirror);
-
 // Entrada de estoque (manual e por código de barras)
 router.post("/entries", requirePermission("stock.move"), stockController.createEntry);
 router.get("/products/by-barcode", requirePermission("stock.read"), stockController.getByBarcode);
