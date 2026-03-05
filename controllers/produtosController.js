@@ -6,6 +6,11 @@ import {
 
 const TABLE = "produtos";
 
+/** Garante que codigo_fabrica esteja presente em cada item (para dropdown e tabelas no frontend) */
+function attachCodigoFabrica(item) {
+  return { ...item, codigo_fabrica: item.codigo_fabrica ?? null };
+}
+
 async function list(req, res) {
   const limit = Math.max(1, Math.min(1000, Number(req.query.limit || req.query.perPage) || 20));
   const page = Math.max(1, Number(req.query.page || 1));
@@ -36,7 +41,7 @@ async function list(req, res) {
     });
     const totalPages = Math.ceil(total / limit) || 1;
     return res.json({
-      data,
+      data: (data || []).map(attachCodigoFabrica),
       page,
       perPage: limit,
       total,
@@ -46,13 +51,19 @@ async function list(req, res) {
 
   const { data, total } = await baseService.listWithFilters(TABLE, req.query);
   const totalPages = Math.ceil(total / limit) || 1;
-  res.json({ data, page, perPage: limit, total, totalPages });
+  res.json({
+    data: (data || []).map(attachCodigoFabrica),
+    page,
+    perPage: limit,
+    total,
+    totalPages,
+  });
 }
 
 async function getById(req, res) {
   const item = await baseService.getById(TABLE, req.params.id);
   if (!item) return res.status(404).json({ message: 'Not found' });
-  res.json(item);
+  res.json(attachCodigoFabrica(item));
 }
 
 async function create(req, res) {
@@ -93,7 +104,7 @@ async function correlatos(req, res) {
   const totalPages = Math.ceil(result.total / limit) || 1;
 
   return res.json({
-    data: result.data,
+    data: (result.data || []).map(attachCodigoFabrica),
     total: result.total,
     page,
     perPage: limit,
