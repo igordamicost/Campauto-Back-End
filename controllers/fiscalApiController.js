@@ -137,7 +137,7 @@ function mapTipoOperacaoParaNatureza(tipo) {
 }
 
 async function emitirNFeV1(req, res) {
-  const { tipo_operacao, natureza_operacao, cliente, itens, venda_id, empresa_id } = req.body;
+  const { tipo_operacao, natureza_operacao, cliente, itens, venda_id, empresa_id, orcamento_id, observacoes_nf } = req.body;
   const empresaId = empresa_id ?? req.user?.empresa_id ?? 1;
 
   const config = await FocusNfRepository.getConfigEmpresa(empresaId);
@@ -148,6 +148,13 @@ async function emitirNFeV1(req, res) {
 
   if (!cliente || !itens || !Array.isArray(itens) || itens.length === 0) {
     return res.status(400).json({ message: "cliente e itens (array) são obrigatórios" });
+  }
+
+  // Observações NF: prioridade body > orçamento
+  let observacoesNf = String(observacoes_nf || "").trim();
+  if (!observacoesNf && orcamento_id) {
+    const [orcRows] = await db.query("SELECT observacoes_nf FROM orcamentos WHERE id = ?", [Number(orcamento_id)]);
+    observacoesNf = String(orcRows[0]?.observacoes_nf || "").trim();
   }
 
   const [empresaRow] = await db.query(
@@ -226,6 +233,10 @@ async function emitirNFeV1(req, res) {
     indicador_inscricao_estadual_destinatario: 9,
     items: focusItems,
   };
+
+  if (observacoesNf) {
+    payload.informacoes_adicionais = observacoesNf;
+  }
 
   const { status, data } = await focusNfe.emitirNFe(ref, payload, token, ambiente);
   if (status >= 400) {

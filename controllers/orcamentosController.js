@@ -849,13 +849,19 @@ async function sendEmail(req, res) {
     }
 
     // Prepare template data
+    const observacoesExternas = String(quote.observacoes_externas || "").trim();
+    const observacoesExternasHtml = observacoesExternas
+      ? `<div style="margin:16px 0;padding:12px;border-top:1px solid #eee;border-bottom:1px solid #eee"><p style="margin:0 0 4px;color:#333;font-size:14px;font-weight:600">Observações:</p><p style="margin:0;color:#555;line-height:1.6;white-space:pre-wrap">${observacoesExternas.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p></div>`
+      : "";
+
     const templateData = {
       company_name: quote.empresas?.nome_fantasia || quote.empresas?.razao_social || process.env.COMPANY_NAME || "Campauto",
       company_logo: quote.empresas?.logo_url || "",
       client_name: quote.clientes?.nome || "Cliente",
       quote_number: quote.numero_sequencial || quote.id,
       quote_valid_until: quote.data ? new Date(new Date(quote.data).getTime() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : "15 dias", // Assume 15 days validity or whatever domain logic indicates
-      quote_total: `R$ ${Number(quote.total || 0).toFixed(2).replace('.', ',')}`
+      quote_total: `R$ ${Number(quote.total || 0).toFixed(2).replace('.', ',')}`,
+      observacoes_externas_html: observacoesExternasHtml
     };
 
     const renderedSubject = renderTemplate(tpl.subject, templateData);

@@ -5,7 +5,8 @@
  * {{user_name}}, {{user_email}}, {{user}}, {{password}},
  * {{action_url}}, {{token_expires_in}},
  * {{order_number}}, {{order_date}}, {{supplier_name}},
- * {{quote_number}}, {{quote_valid_until}}, {{client_name}}, {{quote_total}}
+ * {{quote_number}}, {{quote_valid_until}}, {{client_name}}, {{quote_total}},
+ * {{observacoes_externas_html}} (CLIENT_QUOTE: observações no corpo do e-mail)
  *
  * FIRST_ACCESS: {{user}} = email para login, {{password}} = senha temporária.
  */
@@ -111,6 +112,7 @@ export const DEFAULT_CLIENT_QUOTE = {
     <p style="margin:0 0 8px;color:#555;line-height:1.6">
       Seu orçamento é válido até {{quote_valid_until}}. Valor total: {{quote_total}}.
     </p>
+    {{observacoes_externas_html}}
     <p style="margin:16px 0 0;color:#888;font-size:12px">
       Este é um e-mail automático, por favor não responda diretamente.
     </p>
