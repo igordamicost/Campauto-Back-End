@@ -8,7 +8,7 @@ export class StockRepository {
   /**
    * Busca saldos de estoque (espelho completo: TODOS os produtos × empresas)
    * Usa LEFT JOIN produtos×empresas para garantir espelho completo mesmo sem registro em stock_items
-   * Suporta q (busca por código, descrição, codigo_fabrica), productId, empresa_id, page, limit
+   * Suporta q (busca por código, descrição, codigo_fabrica, observacao), productId, empresa_id, page, limit
    */
   static async getBalances(filters = {}) {
     const { productId, empresa_id, q, limit = 2000, offset = 0 } = filters;
@@ -27,8 +27,8 @@ export class StockRepository {
 
     if (q && String(q).trim()) {
       const term = `%${String(q).trim()}%`;
-      whereParts.push("(p.codigo_produto LIKE ? OR p.codigo_empresa LIKE ? OR p.descricao LIKE ? OR p.codigo_fabrica LIKE ?)");
-      params.push(term, term, term, term);
+      whereParts.push("(p.codigo_produto LIKE ? OR p.codigo_empresa LIKE ? OR p.descricao LIKE ? OR p.codigo_fabrica LIKE ? OR p.observacao LIKE ?)");
+      params.push(term, term, term, term, term);
     }
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
