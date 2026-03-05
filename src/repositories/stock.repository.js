@@ -39,7 +39,7 @@ export class StockRepository {
               p.codigo_produto AS product_code,
               p.codigo_fabrica AS product_factory_code,
               COALESCE(p.descricao, '') AS product_name,
-              p.descricao AS descricao,
+              p.observacao AS descricao,
               COALESCE(e.nome_fantasia, e.razao_social, '') AS empresa_nome,
               COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
               COALESCE(si.qty_reserved, 0) AS qty_reserved,
