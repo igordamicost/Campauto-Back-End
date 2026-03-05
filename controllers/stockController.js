@@ -232,28 +232,56 @@ async function importXml(req, res) {
 }
 
 /**
- * Verifica disponibilidade de produto por empresa
+ * Verifica disponibilidade de produto (formato estendido: by_empresa, supply_action, total_available)
  */
 async function checkAvailability(req, res) {
   try {
     const { productId } = req.params;
     const { qty = 1, empresa_id, locationId } = req.query;
-    const empId = empresa_id != null ? Number(empresa_id) : (locationId != null ? Number(locationId) : 1);
+    const empId = empresa_id != null ? Number(empresa_id) : (locationId != null ? Number(locationId) : null);
     const requestedQty = Number(qty);
-    const availability = await StockRepository.checkAvailability(
+    const availability = await StockRepository.getAvailabilityExtended(
       Number(productId),
       requestedQty,
       empId
     );
-
-    if (!availability.available) {
-      availability.requested = requestedQty;
-    }
-
     return res.json(availability);
   } catch (error) {
     console.error("Error checking availability:", error);
     return res.status(500).json({ message: "Erro ao verificar disponibilidade" });
+  }
+}
+
+/**
+ * Orçamentos que possuem o produto
+ */
+async function getOrcamentosByProduct(req, res) {
+  try {
+    const { productId } = req.params;
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const data = await StockRepository.getOrcamentosByProduct(Number(productId), limit);
+    return res.json(data);
+  } catch (error) {
+    console.error("Error getting orcamentos by product:", error);
+    return res.status(500).json({ message: "Erro ao listar orçamentos" });
+  }
+}
+
+/**
+ * Sincroniza espelho: cria StockItem para produtos sem registro por empresa
+ * Body: { empresa_ids?, product_ids? }
+ */
+async function syncMirror(req, res) {
+  try {
+    const { empresa_ids, product_ids } = req.body || {};
+    const result = await StockRepository.syncMirror(
+      Array.isArray(empresa_ids) ? empresa_ids : undefined,
+      Array.isArray(product_ids) ? product_ids : undefined
+    );
+    return res.json(result);
+  } catch (error) {
+    console.error("Error syncing stock mirror:", error);
+    return res.status(500).json({ message: "Erro ao sincronizar espelho" });
   }
 }
 
@@ -265,4 +293,6 @@ export default {
   getByBarcode: asyncHandler(getByBarcode),
   importXml: asyncHandler(importXml),
   checkAvailability: asyncHandler(checkAvailability),
+  getOrcamentosByProduct: asyncHandler(getOrcamentosByProduct),
+  syncMirror: asyncHandler(syncMirror),
 };

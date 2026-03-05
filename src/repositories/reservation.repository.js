@@ -11,6 +11,7 @@ export class ReservationRepository {
     const {
       product_id,
       customer_id,
+      orcamento_id,
       salesperson_user_id,
       empresa_id = 1,
       location_id,
@@ -27,11 +28,12 @@ export class ReservationRepository {
 
       const [result] = await connection.query(
         `INSERT INTO reservations 
-         (product_id, customer_id, salesperson_user_id, empresa_id, qty, status, due_at, notes, created_by)
-         VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`,
+         (product_id, customer_id, orcamento_id, salesperson_user_id, empresa_id, qty, status, due_at, notes, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`,
         [
           product_id,
-          customer_id,
+          customer_id || null,
+          orcamento_id || null,
           salesperson_user_id,
           empId,
           qty,
@@ -82,7 +84,7 @@ export class ReservationRepository {
     const [rows] = await db.query(
       `SELECT r.*,
               p.id AS product_id, p.descricao AS product_name, p.codigo_produto AS product_code, p.codigo_fabrica AS product_factory_code,
-              c.id AS customer_id, c.cliente AS customer_name,
+              c.id AS customer_id, c.cliente AS customer_name, c.email AS customer_email, c.fantasia AS customer_fantasia,
               u.id AS salesperson_id, u.name AS salesperson_name, u.email AS salesperson_email
        FROM reservations r
        LEFT JOIN produtos p ON r.product_id = p.id
@@ -330,6 +332,17 @@ export class ReservationRepository {
     } finally {
       connection.release();
     }
+  }
+
+  /**
+   * Atualiza document_url e status da reserva
+   */
+  static async updateDocumentUrl(id, documentUrl, status = "signed") {
+    const [result] = await db.query(
+      "UPDATE reservations SET document_url = ?, status = ? WHERE id = ?",
+      [documentUrl, status, id]
+    );
+    return result.affectedRows > 0;
   }
 
   /**

@@ -37,8 +37,9 @@ export class StockRepository {
               sb.empresa_id,
               sb.qty_on_hand,
               sb.qty_reserved,
+              COALESCE(sb.qty_in_budget, 0) AS qty_in_budget,
               COALESCE(sb.qty_pending_nf, 0) AS qty_pending_nf,
-              sb.qty_available,
+              (sb.qty_on_hand - sb.qty_reserved - COALESCE(sb.qty_in_budget, 0) - COALESCE(sb.qty_pending_nf, 0)) AS qty_available,
               p.codigo_produto AS product_code,
               p.codigo_fabrica AS product_factory_code,
               p.descricao AS product_name,
@@ -216,20 +217,175 @@ export class StockRepository {
   static async checkAvailability(productId, qty, empresaId = 1) {
     const empId = Number(empresaId) || 1;
     const [rows] = await db.query(
-      `SELECT qty_on_hand, qty_reserved,
-              COALESCE(qty_available, qty_on_hand - qty_reserved) AS qty_available
+      `SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget,
+              (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0) - COALESCE(qty_pending_nf, 0)) AS qty_available
        FROM stock_balances
        WHERE product_id = ? AND empresa_id = ?`,
       [productId, empId]
     );
 
-    const balance = rows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_available: 0 };
+    const balance = rows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_in_budget: 0, qty_available: 0 };
     return {
       available: Number(balance.qty_available) >= Number(qty),
       qtyAvailable: Number(balance.qty_available),
       qtyOnHand: balance.qty_on_hand,
       qtyReserved: balance.qty_reserved,
     };
+  }
+
+  /**
+   * Verifica disponibilidade estendida: por empresa, supply_action, total_available
+   * Params: productId, qty, empresa_id (empresa emissora do orçamento)
+   * Returns: { available, by_empresa, supply_action?, empresa_with_stock_id?, total_available }
+   */
+  static async getAvailabilityExtended(productId, qty, empresaId) {
+    const [rows] = await db.query(
+      `SELECT sb.empresa_id, sb.qty_on_hand, sb.qty_reserved, COALESCE(sb.qty_in_budget, 0) AS qty_in_budget,
+              (sb.qty_on_hand - sb.qty_reserved - COALESCE(sb.qty_in_budget, 0) - COALESCE(sb.qty_pending_nf, 0)) AS qty_available,
+              COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome
+       FROM stock_balances sb
+       LEFT JOIN empresas e ON sb.empresa_id = e.id
+       WHERE sb.product_id = ?`,
+      [productId]
+    );
+
+    const byEmpresa = rows.map((r) => ({
+      empresa_id: r.empresa_id,
+      empresa_nome: r.empresa_nome,
+      qty_available: Number(r.qty_available),
+      qty_on_hand: Number(r.qty_on_hand),
+      qty_reserved: Number(r.qty_reserved),
+      qty_in_budget: Number(r.qty_in_budget),
+    }));
+
+    const totalAvailable = byEmpresa.reduce((sum, e) => sum + e.qty_available, 0);
+    const requestedQty = Number(qty) || 0;
+    const empId = empresaId != null ? Number(empresaId) : null;
+
+    let supplyAction = null;
+    let empresaWithStockId = null;
+
+    const inEmissora = byEmpresa.find((e) => e.empresa_id === empId);
+    const availEmissora = inEmissora ? inEmissora.qty_available : 0;
+
+    if (availEmissora >= requestedQty) {
+      supplyAction = "in_stock";
+      empresaWithStockId = empId;
+    } else if (totalAvailable >= requestedQty) {
+      supplyAction = "needs_transfer";
+      empresaWithStockId = byEmpresa.find((e) => e.qty_available >= requestedQty)?.empresa_id || byEmpresa[0]?.empresa_id;
+    } else {
+      supplyAction = "needs_purchase";
+    }
+
+    return {
+      available: totalAvailable >= requestedQty,
+      by_empresa: byEmpresa,
+      supply_action: supplyAction,
+      empresa_with_stock_id: empresaWithStockId,
+      total_available: totalAvailable,
+    };
+  }
+
+  /**
+   * Orçamentos que possuem o produto (para GET /stock/balances/:productId/orcamentos)
+   */
+  static async getOrcamentosByProduct(productId, limit = 50) {
+    const [rows] = await db.query(
+      `SELECT o.id, o.numero_sequencial, o.status, o.empresa_id, o.veiculo_id, o.json_itens,
+              COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome,
+              v.placa AS veiculo_placa
+       FROM orcamentos o
+       LEFT JOIN empresas e ON o.empresa_id = e.id
+       LEFT JOIN veiculos v ON o.veiculo_id = v.id
+       WHERE o.status NOT IN ('Finalizado', 'Cancelado')
+         AND o.json_itens IS NOT NULL
+         AND o.json_itens != '[]'
+       ORDER BY o.id DESC
+       LIMIT ?`,
+      [limit]
+    );
+
+    const prodId = Number(productId);
+    const filtered = rows.filter((r) => {
+      try {
+        const itens = typeof r.json_itens === "string" ? JSON.parse(r.json_itens) : r.json_itens;
+        return Array.isArray(itens) && itens.some((i) => Number(i?.produto_id) === prodId);
+      } catch {
+        return false;
+      }
+    });
+
+    return filtered.map((r) => {
+      let quantidade = 0;
+      try {
+        const itens = typeof r.json_itens === "string" ? JSON.parse(r.json_itens) : r.json_itens;
+        if (Array.isArray(itens)) {
+          const item = itens.find((i) => Number(i?.produto_id) === Number(productId));
+          quantidade = item ? Number(item.quantidade || 0) : 0;
+        }
+      } catch {}
+      return {
+        id: r.id,
+        empresa_id: r.empresa_id,
+        numero_sequencial: r.numero_sequencial,
+        empresa_nome: r.empresa_nome,
+        veiculo_placa: r.veiculo_placa,
+        quantidade,
+        status: r.status,
+      };
+    });
+  }
+
+  /**
+   * Sincroniza espelho: cria StockItem (stock_balances) para produtos sem registro por empresa
+   * Body: { empresa_ids?, product_ids? }
+   */
+  static async syncMirror(empresaIds = [], productIds = []) {
+    const connection = await db.getConnection();
+    try {
+      let empresas = [];
+      if (empresaIds && empresaIds.length > 0) {
+        empresas = empresaIds.map(Number).filter(Boolean);
+      } else {
+        const [empRows] = await connection.query("SELECT id FROM empresas");
+        empresas = empRows.map((r) => r.id);
+      }
+
+      let produtos = [];
+      if (productIds && productIds.length > 0) {
+        produtos = productIds.map(Number).filter(Boolean);
+      } else {
+        const [prodRows] = await connection.query("SELECT id FROM produtos");
+        produtos = prodRows.map((r) => r.id);
+      }
+
+      if (empresas.length === 0 || produtos.length === 0) {
+        return { created: 0, message: "Nenhuma empresa ou produto para sincronizar" };
+      }
+
+      let created = 0;
+      for (const empId of empresas) {
+        for (const prodId of produtos) {
+          const [existing] = await connection.query(
+            "SELECT id FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+            [prodId, empId]
+          );
+          if (existing.length === 0) {
+            await connection.query(
+              `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
+               VALUES (?, ?, 0, 0)`,
+              [prodId, empId]
+            );
+            created++;
+          }
+        }
+      }
+
+      return { created, message: `${created} registros criados` };
+    } finally {
+      connection.release();
+    }
   }
 
   /**

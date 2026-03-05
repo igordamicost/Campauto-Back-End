@@ -12,9 +12,13 @@ const asyncHandler = (fn) => (req, res, next) =>
 router.use(authMiddleware);
 
 // Saldos e movimentações (por empresa_id; lojas = GET /empresas)
+router.get("/balances/:productId/orcamentos", requirePermission("stock.read"), stockController.getOrcamentosByProduct);
 router.get("/balances", requirePermission("stock.read"), stockController.listBalances);
 router.get("/movements", requirePermission("stock.read"), stockController.listMovements);
 router.get("/availability/:productId", requirePermission("stock.read"), stockController.checkAvailability);
+
+// Sincroniza espelho produto→estoque por empresa
+router.post("/sync-mirror", requirePermission("stock.move"), stockController.syncMirror);
 
 // Entrada de estoque (manual e por código de barras)
 router.post("/entries", requirePermission("stock.move"), stockController.createEntry);

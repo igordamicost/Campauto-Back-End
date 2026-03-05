@@ -1,6 +1,10 @@
 import { ReservationRepository } from "../src/repositories/reservation.repository.js";
 import { StockRepository } from "../src/repositories/stock.repository.js";
+import { sendEmail } from "../src/services/email.service.js";
+import { getPool } from "../db.js";
 import { z } from "zod";
+import path from "path";
+import fs from "fs";
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -8,10 +12,12 @@ const asyncHandler = (fn) => (req, res, next) =>
 const createReservationSchema = z.object({
   product_id: z.number().int().positive(),
   customer_id: z.number().int().positive().nullable().optional(),
+  orcamento_id: z.number().int().positive().nullable().optional(),
   qty: z.number().positive(),
   due_at: z.string().datetime(),
   notes: z.string().optional(),
   location_id: z.number().int().positive().optional(),
+  empresa_id: z.number().int().positive().optional(),
 });
 
 const updateReservationSchema = z.object({
@@ -90,11 +96,13 @@ async function createReservation(req, res) {
 
     const data = validation.data;
 
+    const empId = data.empresa_id ?? data.location_id ?? req.user?.empresaId ?? 1;
+
     // Verificar disponibilidade
     const availability = await StockRepository.checkAvailability(
       data.product_id,
       data.qty,
-      data.location_id || 1
+      empId
     );
 
     if (!availability.available) {
@@ -110,7 +118,7 @@ async function createReservation(req, res) {
       ...data,
       salesperson_user_id: req.user.userId,
       created_by: req.user.userId,
-      location_id: data.location_id || 1,
+      empresa_id: empId,
     });
 
     const reservation = await ReservationRepository.getById(reservationId);
@@ -177,6 +185,98 @@ async function returnReservation(req, res) {
 }
 
 /**
+ * Envia documento/termo por e-mail ao cliente
+ * POST /reservations/:id/send-document
+ * Body: multipart com file (documento PDF) e opcional email
+ */
+async function sendDocument(req, res) {
+  try {
+    const { id } = req.params;
+    const reservation = await ReservationRepository.getById(id);
+    if (!reservation) {
+      return res.status(404).json({ message: "Reserva não encontrada" });
+    }
+
+    const recipientEmail = req.body?.email || reservation.customer_email;
+    if (!recipientEmail || typeof recipientEmail !== "string") {
+      return res.status(400).json({
+        message: "Cliente não possui e-mail cadastrado. Informe o e-mail no body.",
+      });
+    }
+
+    const pool = getPool();
+    const [tplRows] = await pool.query(
+      "SELECT subject, html_body, is_active FROM email_templates WHERE template_key = ?",
+      ["RESERVATION_DOCUMENT"]
+    );
+    let subject = "Termo de Reserva - Documento para Assinatura";
+    let htmlBody = `<p>Prezado(a),</p><p>Segue em anexo o documento/termo de reserva para sua assinatura.</p>`;
+    if (tplRows[0]?.is_active) {
+      subject = tplRows[0].subject || subject;
+      htmlBody = tplRows[0].html_body || htmlBody;
+    }
+
+    const attachments = [];
+    if (req.file?.buffer) {
+      attachments.push({
+        filename: req.file.originalname || "documento_reserva.pdf",
+        content: req.file.buffer,
+        contentType: req.file.mimetype || "application/pdf",
+      });
+    }
+
+    await sendEmail(recipientEmail, subject, htmlBody, attachments);
+
+    await ReservationRepository.update(id, { status: "sent_to_customer" });
+
+    return res.json({ message: "Documento enviado por e-mail com sucesso" });
+  } catch (error) {
+    console.error("Error sending reservation document:", error);
+    return res.status(500).json({ message: "Erro ao enviar documento" });
+  }
+}
+
+/**
+ * Upload de documento assinado
+ * POST /reservations/:id/upload-document (multipart/form-data com file)
+ */
+async function uploadDocument(req, res) {
+  try {
+    const { id } = req.params;
+    const reservation = await ReservationRepository.getById(id);
+    if (!reservation) {
+      return res.status(404).json({ message: "Reserva não encontrada" });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ message: "Arquivo do documento é obrigatório" });
+    }
+
+    const uploadDir = path.join(process.cwd(), "uploads", "reservations");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const ext = path.extname(req.file.originalname || "") || ".pdf";
+    const safeName = `reservation_${id}_${Date.now()}${ext}`;
+    const filePath = path.join(uploadDir, safeName);
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    const documentUrl = `/uploads/reservations/${safeName}`;
+    await ReservationRepository.updateDocumentUrl(id, documentUrl, "signed");
+
+    const updated = await ReservationRepository.getById(id);
+    return res.json({
+      message: "Documento assinado enviado com sucesso",
+      document_url: documentUrl,
+      reservation: updated,
+    });
+  } catch (error) {
+    console.error("Error uploading reservation document:", error);
+    return res.status(500).json({ message: "Erro ao fazer upload do documento" });
+  }
+}
+
+/**
  * Cancela reserva
  */
 async function cancelReservation(req, res) {
@@ -207,4 +307,6 @@ export default {
   updateReservation: asyncHandler(updateReservation),
   returnReservation: asyncHandler(returnReservation),
   cancelReservation: asyncHandler(cancelReservation),
+  sendDocument: asyncHandler(sendDocument),
+  uploadDocument: asyncHandler(uploadDocument),
 };

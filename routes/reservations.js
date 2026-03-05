@@ -1,8 +1,10 @@
 import express from "express";
+import multer from "multer";
 import reservationsController from "../controllers/reservationsController.js";
 import { authMiddleware } from "../src/middlewares/auth.js";
 import { requirePermission } from "../src/middlewares/permissions.js";
 
+const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 // Todas as rotas requerem autenticação
@@ -23,5 +25,11 @@ router.post("/:id/return", requirePermission("stock.reserve.update"), reservatio
 
 // Cancelar reserva
 router.post("/:id/cancel", requirePermission("stock.reserve.cancel"), reservationsController.cancelReservation);
+
+// Enviar documento/termo por e-mail
+router.post("/:id/send-document", upload.single("file"), requirePermission("stock.reserve.update"), reservationsController.sendDocument);
+
+// Upload de documento assinado
+router.post("/:id/upload-document", upload.single("file"), requirePermission("stock.reserve.update"), reservationsController.uploadDocument);
 
 export default router;

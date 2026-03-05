@@ -16,6 +16,8 @@ router.post("/", asyncHandler(controller.create));
 router.put("/:id", asyncHandler(controller.update));
 router.patch("/:id/status", asyncHandler(controller.updateStatus));
 router.patch("/:id/tags", asyncHandler(controller.updateTags));
+router.patch("/:id/finalize", asyncHandler(controller.finalize));
+router.post("/:id/check-supply", asyncHandler(controller.checkSupply));
 router.delete("/:id", asyncHandler(controller.remove));
 router.post("/:id/enviar-email", upload.single("file"), asyncHandler(controller.sendEmail));
 

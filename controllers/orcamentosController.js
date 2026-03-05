@@ -3,6 +3,7 @@ import { getPool } from "../db.js";
 import { RBACRepository } from "../src/repositories/rbac.repository.js";
 import { sendEmail as mailServiceSend } from "../src/services/email.service.js";
 import { renderTemplate } from "../src/services/templateRenderService.js";
+import { OrcamentoSupplyService } from "../src/services/orcamentoSupply.service.js";
 
 const TABLE = "orcamentos";
 // Novo histórico por SERVIÇO; tabela antiga servico_item_valor_historico permanece apenas para legado
@@ -572,6 +573,12 @@ async function create(req, res) {
   const pool = getPool();
   await gravarHistoricoValorServico(pool, id, jsonItensServicoParsed, req.body.data);
 
+  if (empresaId && jsonItensParsed?.length) {
+    OrcamentoSupplyService.recalcQtyInBudgetForEmpresa(empresaId).catch((e) =>
+      console.warn("[orcamentos] recalcQtyInBudget:", e.message)
+    );
+  }
+
   res.status(201).json({ id, numero_sequencial: numeroSequencial });
 }
 
@@ -631,6 +638,14 @@ async function update(req, res) {
   const orcamentoId = Number(req.params.id);
   const dataOrcamento = dados.data || null;
   await gravarHistoricoValorServico(pool, orcamentoId, jsonItensServicoParsed, dataOrcamento);
+
+  const [empRows] = await pool.query("SELECT empresa_id FROM orcamentos WHERE id = ?", [orcamentoId]);
+  const empresaId = empRows[0]?.empresa_id;
+  if (empresaId && (jsonItensParsed?.length || jsonItensParsed)) {
+    OrcamentoSupplyService.recalcQtyInBudgetForEmpresa(empresaId).catch((e) =>
+      console.warn("[orcamentos] recalcQtyInBudget:", e.message)
+    );
+  }
 
   res.json({ message: "Updated" });
 }
@@ -864,4 +879,67 @@ async function sendEmail(req, res) {
   }
 }
 
-export { list, getById, create, update, updateStatus, updateTags, remove, sendEmail };
+async function finalize(req, res) {
+  const orcamentoId = Number(req.params.id);
+  const userId = req.user?.userId;
+
+  const pool = getPool();
+  const [rows] = await pool.query("SELECT id, usuario_id FROM orcamentos WHERE id = ?", [orcamentoId]);
+  if (!rows || rows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  try {
+    await OrcamentoSupplyService.finalize(orcamentoId, userId);
+    return res.json({ message: "Orçamento finalizado com sucesso" });
+  } catch (error) {
+    console.error("Error finalizing orcamento:", error);
+    return res.status(400).json({
+      message: error.message || "Erro ao finalizar orçamento",
+    });
+  }
+}
+
+async function checkSupply(req, res) {
+  const orcamentoId = Number(req.params.id);
+  const { items, item_index } = req.body || {};
+
+  const pool = getPool();
+  const [rows] = await pool.query("SELECT id, json_itens, usuario_id FROM orcamentos WHERE id = ?", [orcamentoId]);
+  if (!rows || rows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  let itemsToUse = items;
+  if (!itemsToUse || !Array.isArray(itemsToUse)) {
+    let jsonItens = rows[0].json_itens;
+    if (typeof jsonItens === "string") jsonItens = JSON.parse(jsonItens || "[]");
+    itemsToUse = Array.isArray(jsonItens) ? jsonItens : [];
+  }
+
+  try {
+    const result = await OrcamentoSupplyService.checkSupply(
+      orcamentoId,
+      itemsToUse,
+      item_index != null ? Number(item_index) : null
+    );
+    return res.json(result);
+  } catch (error) {
+    console.error("Error checking supply:", error);
+    return res.status(400).json({
+      message: error.message || "Erro ao verificar abastecimento",
+    });
+  }
+}
+
+export { list, getById, create, update, updateStatus, updateTags, remove, sendEmail, finalize, checkSupply };
