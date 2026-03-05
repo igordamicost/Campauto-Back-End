@@ -2571,36 +2571,51 @@ WHERE NOT EXISTS (SELECT 1 FROM email_templates WHERE template_key = 'NOTA_FISCA
 
 -- ========== STEP: 054_estoque_multi_empresas_orcamento_reserva ==========
 -- Migração: Estoque Multi-Empresas + Orçamento + Reserva + Movimentação + Pré-Pedido
--- Adiciona qty_in_budget em stock_balances, novas tabelas e alterações
+-- Cria stock_items (espelho produto×empresa), novas tabelas e alterações
 
--- 1) Adicionar qty_in_budget em stock_balances (se não existir)
-SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE table_schema = DATABASE() AND table_name = 'stock_balances' AND column_name = 'qty_in_budget');
-SET @sql = IF(@col = 0,
-  'ALTER TABLE stock_balances ADD COLUMN qty_in_budget DECIMAL(12,4) NOT NULL DEFAULT 0.000 COMMENT ''Quantidade em orçamentos não finalizados'' AFTER qty_reserved',
-  'SELECT 1');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- 1) Criar tabela stock_items (espelho produto por empresa)
+CREATE TABLE IF NOT EXISTS stock_items (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  product_id INT NOT NULL,
+  empresa_id INT NOT NULL,
+  qty_on_hand DECIMAL(12,4) DEFAULT 0,
+  qty_reserved DECIMAL(12,4) DEFAULT 0,
+  qty_in_budget DECIMAL(12,4) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_product_empresa (product_id, empresa_id),
+  FOREIGN KEY (product_id) REFERENCES produtos(id) ON DELETE CASCADE,
+  FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE RESTRICT,
+  INDEX idx_product (product_id),
+  INDEX idx_empresa (empresa_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 2) Atualizar qty_available para incluir qty_in_budget
-SET @col_pnf = (SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE table_schema = DATABASE() AND table_name = 'stock_balances' AND column_name = 'qty_pending_nf');
-SET @sql_avail = IF(@col_pnf > 0,
-  'ALTER TABLE stock_balances MODIFY COLUMN qty_available DECIMAL(12,4) GENERATED ALWAYS AS (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0) - qty_pending_nf) STORED',
-  'ALTER TABLE stock_balances MODIFY COLUMN qty_available DECIMAL(12,4) GENERATED ALWAYS AS (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0)) STORED');
-PREPARE stmt2 FROM @sql_avail; EXECUTE stmt2; DEALLOCATE PREPARE stmt2;
+-- 2) Migrar dados de stock_balances para stock_items (se stock_balances existir)
+INSERT IGNORE INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+SELECT sb.product_id, sb.empresa_id,
+  COALESCE(sb.qty_on_hand, 0), COALESCE(sb.qty_reserved, 0), 0
+FROM stock_balances sb
+WHERE EXISTS (SELECT 1 FROM information_schema.tables t WHERE t.table_schema = DATABASE() AND t.table_name = 'stock_balances');
 
--- 3) Estender ENUM de stock_movements.type (adicionar novos tipos)
+-- 3) Espelho automático OBRIGATÓRIO: popular stock_items para TODOS produtos × empresas
+INSERT IGNORE INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+SELECT p.id, e.id, 0, 0, 0
+FROM produtos p
+CROSS JOIN empresas e
+WHERE NOT EXISTS (SELECT 1 FROM stock_items si WHERE si.product_id = p.id AND si.empresa_id = e.id);
+
+-- 5) Estender ENUM de stock_movements.type (adicionar novos tipos)
 ALTER TABLE stock_movements MODIFY COLUMN type ENUM(
   'ENTRY','EXIT','ADJUSTMENT','RESERVE','RESERVE_RETURN','RESERVE_CONVERT',
   'entrada_manual','saida_venda','transferencia_saida','transferencia_entrada','reserva','devolucao_reserva'
 ) NOT NULL;
 
--- 4) Garantir empresa_id em orcamentos (já existe em setup, mas garantir FK)
+-- 6) Garantir empresa_id em orcamentos (já existe em setup)
 SET @col_emp = (SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE table_schema = DATABASE() AND table_name = 'orcamentos' AND column_name = 'empresa_id');
 -- empresa_id já existe em orcamentos pelo setup.sql
 
--- 5) Transfer Orders
+-- 7) Transfer Orders
 CREATE TABLE IF NOT EXISTS transfer_orders (
   id INT PRIMARY KEY AUTO_INCREMENT,
   orcamento_id INT NULL,
@@ -2628,7 +2643,7 @@ CREATE TABLE IF NOT EXISTS transfer_order_items (
   INDEX idx_transfer_order (transfer_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 6) Pre-Orders
+-- 8) Pre-Orders
 CREATE TABLE IF NOT EXISTS pre_orders (
   id INT PRIMARY KEY AUTO_INCREMENT,
   orcamento_id INT NULL,
@@ -2650,7 +2665,7 @@ CREATE TABLE IF NOT EXISTS pre_order_items (
   INDEX idx_pre_order (pre_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 7) Alterações em reservations: orcamento_id, terms, document_url, status estendido
+-- 9) Alterações em reservations: orcamento_id, terms, document_url, status estendido
 SET @col_orc = (SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE table_schema = DATABASE() AND table_name = 'reservations' AND column_name = 'orcamento_id');
 SET @sql_orc = IF(@col_orc = 0,
@@ -2678,18 +2693,7 @@ ALTER TABLE reservations MODIFY COLUMN status ENUM(
   'draft','sent_to_customer','awaiting_signature','signed','delivered','closed','canceled'
 ) NOT NULL DEFAULT 'ACTIVE';
 
--- 8) Espelho automático: popular stock_balances (produto×empresa) para combinações inexistentes
--- Substitui o endpoint sync-mirror — executa na migration ao publicar
-INSERT IGNORE INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-SELECT p.id, e.id, 0, 0
-FROM produtos p
-CROSS JOIN empresas e
-WHERE NOT EXISTS (
-  SELECT 1 FROM stock_balances sb
-  WHERE sb.product_id = p.id AND sb.empresa_id = e.id
-);
-
--- 9) Sales Log
+-- 10) Sales Log
 CREATE TABLE IF NOT EXISTS sales_log (
   id INT PRIMARY KEY AUTO_INCREMENT,
   tipo ENUM('intencao','venda','movimentacao','pre_pedido','reserva') NOT NULL,

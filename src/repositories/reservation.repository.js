@@ -46,8 +46,8 @@ export class ReservationRepository {
       const reservationId = result.insertId;
 
       await connection.query(
-        `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-         VALUES (?, ?, 0, ?)
+        `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+         VALUES (?, ?, 0, ?, 0)
          ON DUPLICATE KEY UPDATE qty_reserved = qty_reserved + ?`,
         [product_id, empId, qty, qty]
       );
@@ -232,7 +232,7 @@ export class ReservationRepository {
 
       // Liberar estoque (reduzir qty_reserved)
       await connection.query(
-        `UPDATE stock_balances 
+        `UPDATE stock_items 
          SET qty_reserved = qty_reserved - ?
          WHERE product_id = ? AND empresa_id = ?`,
         [reservation.qty, reservation.product_id, reservation.empresa_id]
@@ -296,7 +296,7 @@ export class ReservationRepository {
 
       // Liberar estoque
       await connection.query(
-        `UPDATE stock_balances 
+        `UPDATE stock_items 
          SET qty_reserved = qty_reserved - ?
          WHERE product_id = ? AND empresa_id = ?`,
         [reservation.qty, reservation.product_id, reservation.empresa_id]

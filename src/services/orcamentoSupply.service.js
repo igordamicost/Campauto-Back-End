@@ -153,7 +153,7 @@ export class OrcamentoSupplyService {
         if (!produtoId || quantidade <= 0) continue;
 
         const [balRows] = await connection.query(
-          "SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+          "SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget FROM stock_items WHERE product_id = ? AND empresa_id = ?",
           [produtoId, empresaId]
         );
         const bal = balRows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_in_budget: 0 };
@@ -173,14 +173,14 @@ export class OrcamentoSupplyService {
         if (!produtoId || quantidade <= 0) continue;
 
         const [balRows] = await connection.query(
-          "SELECT qty_on_hand FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+          "SELECT qty_on_hand FROM stock_items WHERE product_id = ? AND empresa_id = ?",
           [produtoId, empresaId]
         );
         const qtyBefore = balRows[0]?.qty_on_hand ?? 0;
         const qtyAfter = qtyBefore - quantidade;
 
         await connection.query(
-          `UPDATE stock_balances SET qty_on_hand = qty_on_hand - ?, qty_in_budget = GREATEST(0, COALESCE(qty_in_budget, 0) - ?)
+          `UPDATE stock_items SET qty_on_hand = qty_on_hand - ?, qty_in_budget = GREATEST(0, COALESCE(qty_in_budget, 0) - ?)
            WHERE product_id = ? AND empresa_id = ?`,
           [quantidade, quantidade, produtoId, empresaId]
         );
@@ -231,8 +231,8 @@ export class OrcamentoSupplyService {
       const qty = Number(delta);
       if (!produtoId || qty === 0) continue;
       await db.query(
-        `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-         VALUES (?, ?, 0, 0)
+        `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+         VALUES (?, ?, 0, 0, 0)
          ON DUPLICATE KEY UPDATE qty_in_budget = GREATEST(0, COALESCE(qty_in_budget, 0) + ?)`,
         [Number(produtoId), empresaId, qty]
       );
@@ -268,13 +268,13 @@ export class OrcamentoSupplyService {
     const connection = await db.getConnection();
     try {
       await connection.query(
-        "UPDATE stock_balances SET qty_in_budget = 0 WHERE empresa_id = ?",
+        "UPDATE stock_items SET qty_in_budget = 0 WHERE empresa_id = ?",
         [empresaId]
       );
       for (const [pid, qty] of Object.entries(agg)) {
         if (qty <= 0) continue;
         await connection.query(
-          `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+          `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
            VALUES (?, ?, 0, 0, ?)
            ON DUPLICATE KEY UPDATE qty_in_budget = ?`,
           [pid, empresaId, qty, qty]

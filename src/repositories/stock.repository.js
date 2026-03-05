@@ -6,7 +6,8 @@ import { XMLParser } from "fast-xml-parser";
  */
 export class StockRepository {
   /**
-   * Busca saldos de estoque (por produto e por empresa)
+   * Busca saldos de estoque (espelho completo: TODOS os produtos × empresas)
+   * Usa LEFT JOIN produtos×empresas para garantir espelho completo mesmo sem registro em stock_items
    * Suporta q (busca por código, descrição, codigo_fabrica), productId, empresa_id, page, limit
    */
   static async getBalances(filters = {}) {
@@ -15,12 +16,12 @@ export class StockRepository {
     const params = [];
 
     if (productId) {
-      whereParts.push("sb.product_id = ?");
+      whereParts.push("p.id = ?");
       params.push(productId);
     }
 
     if (empresa_id != null && empresa_id !== "") {
-      whereParts.push("sb.empresa_id = ?");
+      whereParts.push("e.id = ?");
       params.push(Number(empresa_id));
     }
 
@@ -33,20 +34,19 @@ export class StockRepository {
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
     const [rows] = await db.query(
-      `SELECT sb.product_id,
-              sb.empresa_id,
-              sb.qty_on_hand,
-              sb.qty_reserved,
-              COALESCE(sb.qty_in_budget, 0) AS qty_in_budget,
-              COALESCE(sb.qty_pending_nf, 0) AS qty_pending_nf,
-              (sb.qty_on_hand - sb.qty_reserved - COALESCE(sb.qty_in_budget, 0) - COALESCE(sb.qty_pending_nf, 0)) AS qty_available,
+      `SELECT p.id AS product_id,
+              e.id AS empresa_id,
+              COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
+              COALESCE(si.qty_reserved, 0) AS qty_reserved,
+              COALESCE(si.qty_in_budget, 0) AS qty_in_budget,
+              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available,
               p.codigo_produto AS product_code,
               p.codigo_fabrica AS product_factory_code,
               p.descricao AS product_name,
               COALESCE(e.nome_fantasia, e.razao_social, '') AS empresa_nome
-       FROM stock_balances sb
-       INNER JOIN produtos p ON sb.product_id = p.id
-       LEFT JOIN empresas e ON sb.empresa_id = e.id
+       FROM produtos p
+       CROSS JOIN empresas e
+       LEFT JOIN stock_items si ON si.product_id = p.id AND si.empresa_id = e.id
        ${whereSql}
        ORDER BY p.descricao, e.nome_fantasia
        LIMIT ? OFFSET ?`,
@@ -55,8 +55,9 @@ export class StockRepository {
 
     const [[countRow]] = await db.query(
       `SELECT COUNT(*) AS total
-       FROM stock_balances sb
-       INNER JOIN produtos p ON sb.product_id = p.id
+       FROM produtos p
+       CROSS JOIN empresas e
+       LEFT JOIN stock_items si ON si.product_id = p.id AND si.empresa_id = e.id
        ${whereSql}`,
       params
     );
@@ -154,7 +155,7 @@ export class StockRepository {
       await connection.beginTransaction();
 
       const [balanceRows] = await connection.query(
-        "SELECT qty_on_hand, qty_reserved FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+        "SELECT qty_on_hand, qty_reserved FROM stock_items WHERE product_id = ? AND empresa_id = ?",
         [product_id, empId]
       );
 
@@ -168,15 +169,15 @@ export class StockRepository {
       if (type === "ENTRY" || type === "ADJUSTMENT") {
         qtyAfter = qtyBefore + qty;
         await connection.query(
-          `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-           VALUES (?, ?, ?, 0)
+          `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+           VALUES (?, ?, ?, 0, 0)
            ON DUPLICATE KEY UPDATE qty_on_hand = qty_on_hand + ?`,
           [product_id, empId, qty, qty]
         );
       } else if (type === "EXIT") {
         qtyAfter = qtyBefore - qty;
         await connection.query(
-          `UPDATE stock_balances 
+          `UPDATE stock_items 
            SET qty_on_hand = qty_on_hand - ?
            WHERE product_id = ? AND empresa_id = ?`,
           [qty, product_id, empId]
@@ -218,8 +219,8 @@ export class StockRepository {
     const empId = Number(empresaId) || 1;
     const [rows] = await db.query(
       `SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget,
-              (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0) - COALESCE(qty_pending_nf, 0)) AS qty_available
-       FROM stock_balances
+              (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0)) AS qty_available
+       FROM stock_items
        WHERE product_id = ? AND empresa_id = ?`,
       [productId, empId]
     );
@@ -240,12 +241,14 @@ export class StockRepository {
    */
   static async getAvailabilityExtended(productId, qty, empresaId) {
     const [rows] = await db.query(
-      `SELECT sb.empresa_id, sb.qty_on_hand, sb.qty_reserved, COALESCE(sb.qty_in_budget, 0) AS qty_in_budget,
-              (sb.qty_on_hand - sb.qty_reserved - COALESCE(sb.qty_in_budget, 0) - COALESCE(sb.qty_pending_nf, 0)) AS qty_available,
+      `SELECT e.id AS empresa_id,
+              COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
+              COALESCE(si.qty_reserved, 0) AS qty_reserved,
+              COALESCE(si.qty_in_budget, 0) AS qty_in_budget,
+              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available,
               COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome
-       FROM stock_balances sb
-       LEFT JOIN empresas e ON sb.empresa_id = e.id
-       WHERE sb.product_id = ?`,
+       FROM empresas e
+       LEFT JOIN stock_items si ON si.product_id = ? AND si.empresa_id = e.id`,
       [productId]
     );
 
@@ -417,15 +420,15 @@ export class StockRepository {
         }
 
         const [balRows] = await connection.query(
-          "SELECT qty_on_hand FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+          "SELECT qty_on_hand FROM stock_items WHERE product_id = ? AND empresa_id = ?",
           [productId, empresa_id]
         );
         const qtyBefore = balRows[0]?.qty_on_hand ?? 0;
         const qtyAfter = qtyBefore + qty;
 
         await connection.query(
-          `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-           VALUES (?, ?, ?, 0)
+          `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+           VALUES (?, ?, ?, 0, 0)
            ON DUPLICATE KEY UPDATE qty_on_hand = qty_on_hand + ?`,
           [productId, empresa_id, qty, qty]
         );

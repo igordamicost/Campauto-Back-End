@@ -357,43 +357,39 @@ async function finalizar(req, res) {
     // Atualizar status
     await pool.query(`UPDATE ${TABLE} SET status = 'FINALIZADA' WHERE id = ?`, [id]);
 
+    // Empresa destino da compra (compras não tem empresa_id; usa primeira empresa)
+    const [[empRow]] = await pool.query('SELECT id FROM empresas ORDER BY id LIMIT 1');
+    const empresaId = empRow?.id ?? 1;
+
     // Criar movimentações de estoque
     for (const item of itensRows) {
-      // Verificar se existe registro de estoque
       const [stockRows] = await pool.query(
-        'SELECT id FROM stock_balances WHERE product_id = ? AND location_id = 1',
-        [item.produto_id]
+        'SELECT id, qty_on_hand FROM stock_items WHERE product_id = ? AND empresa_id = ?',
+        [item.produto_id, empresaId]
       );
 
       let qtyBefore = 0;
       if (stockRows.length === 0) {
-        // Criar registro de estoque
         await pool.query(
-          'INSERT INTO stock_balances (product_id, location_id, qty_on_hand) VALUES (?, 1, 0)',
-          [item.produto_id]
+          'INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget) VALUES (?, ?, 0, 0, 0)',
+          [item.produto_id, empresaId]
         );
       } else {
-        const [qtyRows] = await pool.query(
-          'SELECT qty_on_hand FROM stock_balances WHERE product_id = ? AND location_id = 1',
-          [item.produto_id]
-        );
-        qtyBefore = Number(qtyRows[0].qty_on_hand || 0);
+        qtyBefore = Number(stockRows[0].qty_on_hand || 0);
       }
 
       const qtyAfter = qtyBefore + Number(item.quantidade);
 
-      // Atualizar saldo
       await pool.query(
-        'UPDATE stock_balances SET qty_on_hand = ? WHERE product_id = ? AND location_id = 1',
-        [qtyAfter, item.produto_id]
+        'UPDATE stock_items SET qty_on_hand = ? WHERE product_id = ? AND empresa_id = ?',
+        [qtyAfter, item.produto_id, empresaId]
       );
 
-      // Criar movimentação
       await pool.query(
         `INSERT INTO stock_movements 
-         (product_id, location_id, type, qty, qty_before, qty_after, ref_type, ref_id, created_by)
-         VALUES (?, 1, 'ENTRY', ?, ?, ?, 'PURCHASE', ?, ?)`,
-        [item.produto_id, item.quantidade, qtyBefore, qtyAfter, id, req.user.id]
+         (product_id, empresa_id, type, qty, qty_before, qty_after, ref_type, ref_id, created_by)
+         VALUES (?, ?, 'ENTRY', ?, ?, ?, 'PURCHASE', ?, ?)`,
+        [item.produto_id, empresaId, item.quantidade, qtyBefore, qtyAfter, id, req.user.id]
       );
     }
 

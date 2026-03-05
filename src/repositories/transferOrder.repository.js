@@ -157,14 +157,14 @@ export class TransferOrderRepository {
           const qty = Number(quantity);
 
           const [origRows] = await connection.query(
-            "SELECT qty_on_hand FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+            "SELECT qty_on_hand FROM stock_items WHERE product_id = ? AND empresa_id = ?",
             [product_id, order.empresa_origem_id]
           );
           const qtyBeforeOrig = origRows[0]?.qty_on_hand ?? 0;
           const qtyAfterOrig = qtyBeforeOrig - qty;
 
           await connection.query(
-            "UPDATE stock_balances SET qty_on_hand = qty_on_hand - ? WHERE product_id = ? AND empresa_id = ?",
+            "UPDATE stock_items SET qty_on_hand = qty_on_hand - ? WHERE product_id = ? AND empresa_id = ?",
             [qty, product_id, order.empresa_origem_id]
           );
           await connection.query(
@@ -174,15 +174,15 @@ export class TransferOrderRepository {
           );
 
           const [destRows] = await connection.query(
-            "SELECT qty_on_hand FROM stock_balances WHERE product_id = ? AND empresa_id = ?",
+            "SELECT qty_on_hand FROM stock_items WHERE product_id = ? AND empresa_id = ?",
             [product_id, order.empresa_destino_id]
           );
           const qtyBeforeDest = destRows[0]?.qty_on_hand ?? 0;
           const qtyAfterDest = qtyBeforeDest + qty;
 
           await connection.query(
-            `INSERT INTO stock_balances (product_id, empresa_id, qty_on_hand, qty_reserved)
-             VALUES (?, ?, ?, 0)
+            `INSERT INTO stock_items (product_id, empresa_id, qty_on_hand, qty_reserved, qty_in_budget)
+             VALUES (?, ?, ?, 0, 0)
              ON DUPLICATE KEY UPDATE qty_on_hand = qty_on_hand + ?`,
             [product_id, order.empresa_destino_id, qty, qty]
           );
