@@ -36,10 +36,19 @@ const PREPOSICOES = [
   " sem ",
 ];
 
-/** Sinônimos para normalização (removido municipio conforme solicitado) */
-const SINONIMOS = {
-  // Removido sinônimos de municipio pois não buscamos mais por endereço
-};
+/** Sinônimos para normalização (vazio - município não entra na busca por q) */
+const SINONIMOS = {};
+
+/** Remove acentos para busca case/accent-insensitive */
+function unaccent(str) {
+  if (typeof str !== "string") return "";
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/** Expressão SQL para normalizar acentos em coluna (MySQL) */
+function accentNormalizeSql(col) {
+  return `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(COALESCE(\`${col}\`, '')), 'á','a'), 'é','e'), 'í','i'), 'ó','o'), 'ú','u'), 'ã','a'), 'ç','c')`;
+}
 
 /**
  * Normaliza texto para busca: lowercase, remove preposições, trata sinônimos, colapsa espaços.
@@ -173,54 +182,49 @@ export async function listClientesWithSearch(options = {}) {
 
   const q = options.q ? String(options.q).trim() : "";
   if (q) {
-    // Normaliza o termo de busca: lowercase (case-insensitive)
-    // Remove preposições para melhorar busca (ex: "municipio de bonito" -> "municipio bonito")
-    let searchTerm = q.toLowerCase().trim();
-    
-    // Remove preposições comuns do termo de busca (apenas se houver múltiplas palavras)
-    // Isso permite encontrar "bonito" mesmo quando busca "municipio de bonito"
-    if (searchTerm.includes(" ")) {
-      for (const prep of PREPOSICOES) {
-        searchTerm = searchTerm.replace(new RegExp(prep.trim(), "gi"), " ");
+    // Termo normalizado: sem acentos, lowercase, trim. NÃO remove preposições (ex: "de", "da")
+    // pois isso quebra o match (ex: "fundo municipal de saúde" vira "fundo municipal saúde"
+    // e não encontra "fundo municipal de saúde" no banco)
+    const searchTerm = unaccent(q).toLowerCase().trim();
+    if (searchTerm.length > 0) {
+      // Campos de busca: cliente (nome), fantasia, razao_social, cpf_cnpj, telefone, celular, email
+      // Município NÃO entra na busca por q (usar filtro dedicado municipio)
+      const searchFields = ["cliente", "fantasia", "razao_social", "cpf_cnpj", "telefone", "celular", "email"];
+      const availableFields = searchFields.filter((f) => columns.includes(f));
+
+      const conditions = [];
+      for (const f of availableFields) {
+        conditions.push(`${accentNormalizeSql(f)} LIKE ?`);
       }
-      // Colapsa espaços múltiplos e trim
-      searchTerm = searchTerm.replace(/\s+/g, " ").trim();
+
+      // CPF/CNPJ: busca também sem máscara (só dígitos) - inclui no OR principal
+      const cpfCnpjDigits = q.replace(/\D/g, "");
+      if (cpfCnpjDigits.length >= 11 && columns.includes("cpf_cnpj")) {
+        conditions.push(`(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(\`cpf_cnpj\`, ''), '.', ''), '/', ''), '-', ''), ' ', '') LIKE ?)`);
+      }
+
+      if (conditions.length > 0) {
+        whereParts.push(`(${conditions.join(" OR ")})`);
+        availableFields.forEach(() => params.push(`%${searchTerm}%`));
+        if (cpfCnpjDigits.length >= 11 && columns.includes("cpf_cnpj")) {
+          params.push(`%${cpfCnpjDigits}%`);
+        }
+      }
     }
-    
-    // Garante que temos um termo válido (não vazio)
-    if (searchTerm.length === 0) {
-      searchTerm = q.toLowerCase().trim();
-    }
-    
-    // Campos de busca: Nome/Fantasia, Razão Social, CPF/CNPJ, Contato, Município
-    // Inclui município para encontrar pessoas que são do município mesmo sem "bonito" no nome
-    // Busca case-insensitive em todos os campos usando LIKE com wildcards
-    const searchConditions = [
-      // Nome/Fantasia
-      "LOWER(COALESCE(`cliente`, '')) LIKE ?",
-      "LOWER(COALESCE(`fantasia`, '')) LIKE ?",
-      // Razão Social
-      "LOWER(COALESCE(`razao_social`, '')) LIKE ?",
-      // CPF/CNPJ
-      "LOWER(COALESCE(`cpf_cnpj`, '')) LIKE ?",
-      // Contato (telefone, celular, email)
-      "LOWER(COALESCE(`telefone`, '')) LIKE ?",
-      "LOWER(COALESCE(`celular`, '')) LIKE ?",
-      "LOWER(COALESCE(`email`, '')) LIKE ?",
-      // Município (para encontrar pessoas do município mesmo sem "bonito" no nome)
-      "LOWER(COALESCE(`municipio`, '')) LIKE ?",
-    ];
-    
-    // Para cada condição, adiciona o termo de busca com wildcards
-    const conditionSql = searchConditions.join(" OR ");
-    whereParts.push(`(${conditionSql})`);
-    
-    // Adiciona o parâmetro para cada condição (mesmo valor para todas)
-    // Usa %termo% para busca parcial (encontra "bonito" em "MUNICIPIO DE BONITO")
-    // Exemplo: busca "bonito" encontra "BONITO", "Bonito", "MUNICIPIO DE BONITO", etc.
-    searchConditions.forEach(() => {
-      params.push(`%${searchTerm}%`);
-    });
+  }
+
+  // Filtros dedicados (combinados com AND)
+  if (options.tipo_pessoa) {
+    whereParts.push("`tipo_pessoa` = ?");
+    params.push(String(options.tipo_pessoa).trim().toUpperCase().slice(0, 1));
+  }
+  if (options.municipio) {
+    whereParts.push("LOWER(COALESCE(`municipio`, '')) LIKE ?");
+    params.push(`%${String(options.municipio).trim().toLowerCase()}%`);
+  }
+  if (options.uf) {
+    whereParts.push("UPPER(TRIM(COALESCE(`uf`, ''))) = ?");
+    params.push(String(options.uf).trim().toUpperCase().slice(0, 2));
   }
 
   const whereSql =

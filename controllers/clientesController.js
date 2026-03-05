@@ -20,6 +20,9 @@ async function list(req, res) {
       page,
       sortBy: req.query.sortBy,
       sortDir: req.query.sortDir,
+      tipo_pessoa: req.query.tipo_pessoa,
+      municipio: req.query.municipio,
+      uf: req.query.uf,
     });
     const totalPages = Math.ceil(total / limit) || 1;
     return res.json({
