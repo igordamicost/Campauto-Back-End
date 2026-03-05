@@ -36,14 +36,15 @@ export class StockRepository {
     const [rows] = await db.query(
       `SELECT p.id AS product_id,
               e.id AS empresa_id,
+              p.codigo_produto AS product_code,
+              p.codigo_fabrica AS product_factory_code,
+              COALESCE(p.descricao, '') AS product_name,
+              p.descricao AS descricao,
+              COALESCE(e.nome_fantasia, e.razao_social, '') AS empresa_nome,
               COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
               COALESCE(si.qty_reserved, 0) AS qty_reserved,
               COALESCE(si.qty_in_budget, 0) AS qty_in_budget,
-              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available,
-              p.codigo_produto AS product_code,
-              p.codigo_fabrica AS product_factory_code,
-              p.descricao AS product_name,
-              COALESCE(e.nome_fantasia, e.razao_social, '') AS empresa_nome
+              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available
        FROM produtos p
        CROSS JOIN empresas e
        LEFT JOIN stock_items si ON si.product_id = p.id AND si.empresa_id = e.id
