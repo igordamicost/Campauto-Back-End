@@ -203,6 +203,7 @@ async function list(req, res) {
   const includeEmpresas = include.includes("empresas");
   const includeVeiculos = include.includes("veiculos");
   const includeUsuario = include.includes("usuario") || include.includes("usuarios");
+  const includeRequerPedido = include.includes("requer_pedido");
 
   const pool = getPool();
 
@@ -296,6 +297,19 @@ async function list(req, res) {
         row.veiculos = map.get(row.veiculo_id) || null;
       });
     }
+  }
+
+  if (includeRequerPedido && data.length > 0) {
+    const orcamentosParaCheck = data.map((row) => ({
+      id: row.id,
+      empresa_id: row.empresa_id,
+      json_itens: row.json_itens,
+    }));
+    const resultMap = await OrcamentoSupplyService.getRequerPedidoCompraBatch(orcamentosParaCheck);
+    data.forEach((row) => {
+      const r = resultMap.get(row.id);
+      row.pode_gerar_pedido = r ? r.pode_gerar_pedido : false;
+    });
   }
 
   const totalPages = Math.ceil(total / limit) || 1;
@@ -911,6 +925,83 @@ async function finalize(req, res) {
   }
 }
 
+async function requerPedidoCompra(req, res) {
+  const orcamentoId = Number(req.params.id);
+
+  const pool = getPool();
+  const [rows] = await pool.query("SELECT id, usuario_id FROM orcamentos WHERE id = ?", [orcamentoId]);
+  if (!rows || rows.length === 0) {
+    return res.status(404).json({ message: "Orçamento não encontrado" });
+  }
+
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  if (!canSeeAll && req.user?.userId && rows[0].usuario_id !== req.user.userId) {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  try {
+    const result = await OrcamentoSupplyService.getRequerPedidoCompra(orcamentoId);
+    if (result === null) {
+      return res.status(404).json({ message: "Orçamento não encontrado" });
+    }
+    return res.json(result);
+  } catch (error) {
+    console.error("Error requerPedidoCompra:", error);
+    return res.status(500).json({
+      message: error.message || "Erro ao verificar estoque",
+    });
+  }
+}
+
+async function verificarEstoque(req, res) {
+  const { orcamento_ids } = req.body || {};
+  if (!Array.isArray(orcamento_ids) || orcamento_ids.length === 0) {
+    return res.status(400).json({ message: "orcamento_ids é obrigatório e deve ser um array não vazio" });
+  }
+
+  const ids = orcamento_ids.map((id) => Number(id)).filter((id) => id > 0);
+  if (ids.length === 0) {
+    return res.json({});
+  }
+
+  const pool = getPool();
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await pool.query(
+    `SELECT id, empresa_id, json_itens, usuario_id FROM orcamentos WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  const canSeeAll = await RBACRepository.userHasPermission(req.user?.userId, "admin.read");
+  const orcamentosFiltrados = rows.filter((r) => {
+    if (canSeeAll) return true;
+    return req.user?.userId && r.usuario_id === req.user.userId;
+  });
+
+  if (orcamentosFiltrados.length === 0) {
+    return res.json({});
+  }
+
+  const orcamentosParaCheck = orcamentosFiltrados.map((r) => ({
+    id: r.id,
+    empresa_id: r.empresa_id,
+    json_itens: r.json_itens,
+  }));
+
+  try {
+    const resultMap = await OrcamentoSupplyService.getRequerPedidoCompraBatch(orcamentosParaCheck);
+    const response = {};
+    for (const [id, data] of resultMap) {
+      response[String(id)] = { pode_gerar_pedido: data.pode_gerar_pedido };
+    }
+    return res.json(response);
+  } catch (error) {
+    console.error("Error verificarEstoque:", error);
+    return res.status(500).json({
+      message: error.message || "Erro ao verificar estoque",
+    });
+  }
+}
+
 async function checkSupply(req, res) {
   const orcamentoId = Number(req.params.id);
   const { items, item_index } = req.body || {};
@@ -948,4 +1039,17 @@ async function checkSupply(req, res) {
   }
 }
 
-export { list, getById, create, update, updateStatus, updateTags, remove, sendEmail, finalize, checkSupply };
+export {
+  list,
+  getById,
+  create,
+  update,
+  updateStatus,
+  updateTags,
+  remove,
+  sendEmail,
+  finalize,
+  checkSupply,
+  requerPedidoCompra,
+  verificarEstoque,
+};

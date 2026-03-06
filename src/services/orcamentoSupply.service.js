@@ -2,9 +2,178 @@ import { db } from "../config/database.js";
 import { StockRepository } from "../repositories/stock.repository.js";
 
 /**
+ * Extrai itens com produto_id e quantidade de json_itens
+ */
+function getItensComProduto(jsonItens) {
+  if (!jsonItens) return [];
+  if (typeof jsonItens === "string") {
+    try {
+      jsonItens = JSON.parse(jsonItens || "[]");
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(jsonItens)) return [];
+  return jsonItens
+    .map((item) => {
+      const produtoId = Number(item?.produto_id ?? item?.product_id);
+      const quantidade = Number(item?.quantidade ?? item?.quantity) || 0;
+      if (!produtoId || quantidade <= 0) return null;
+      return {
+        produto_id: produtoId,
+        descricao: item?.descricao ?? item?.product_name ?? "",
+        quantidade_solicitada: quantidade,
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
  * Serviço de abastecimento de orçamento: check-supply e finalize
  */
 export class OrcamentoSupplyService {
+  /**
+   * Verifica se o orçamento possui itens sem estoque (requer pedido de compra).
+   * Retorna: { requer_pedido, pode_gerar_pedido, itens_sem_estoque }
+   * - pode_gerar_pedido = true quando há pelo menos um item sem estoque suficiente
+   */
+  static async getRequerPedidoCompra(orcamentoId) {
+    const [rows] = await db.query(
+      "SELECT id, empresa_id, json_itens FROM orcamentos WHERE id = ?",
+      [orcamentoId]
+    );
+    const orcamento = rows[0];
+    if (!orcamento) return null;
+    return this.getRequerPedidoCompraFromOrcamento(orcamento);
+  }
+
+  /**
+   * Calcula requer_pedido a partir de um row de orçamento (id, empresa_id, json_itens)
+   */
+  static async getRequerPedidoCompraFromOrcamento(orcamento) {
+    const itens = getItensComProduto(orcamento.json_itens);
+    if (itens.length === 0) {
+      return {
+        requer_pedido: false,
+        pode_gerar_pedido: false,
+        itens_sem_estoque: [],
+      };
+    }
+
+    const empresaId = orcamento.empresa_id != null ? Number(orcamento.empresa_id) : null;
+    if (!empresaId) {
+      return {
+        requer_pedido: false,
+        pode_gerar_pedido: false,
+        itens_sem_estoque: [],
+      };
+    }
+
+    const produtoIds = [...new Set(itens.map((i) => i.produto_id))];
+    const placeholders = produtoIds.map(() => "?").join(",");
+    const [stockRows] = await db.query(
+      `SELECT product_id, qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget
+       FROM stock_items
+       WHERE product_id IN (${placeholders}) AND empresa_id = ?`,
+      [...produtoIds, empresaId]
+    );
+
+    const saldoByProduto = new Map();
+    for (const r of stockRows) {
+      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - Number(r.qty_in_budget);
+      saldoByProduto.set(r.product_id, Math.max(0, disponivel));
+    }
+
+    const itensSemEstoque = [];
+    for (const item of itens) {
+      const saldo = saldoByProduto.get(item.produto_id) ?? 0;
+      if (item.quantidade_solicitada > saldo) {
+        itensSemEstoque.push({
+          produto_id: item.produto_id,
+          descricao: item.descricao,
+          quantidade_solicitada: item.quantidade_solicitada,
+          saldo_estoque: saldo,
+        });
+      }
+    }
+
+    const podeGerarPedido = itensSemEstoque.length > 0;
+    return {
+      requer_pedido: podeGerarPedido,
+      pode_gerar_pedido: podeGerarPedido,
+      itens_sem_estoque: itensSemEstoque,
+    };
+  }
+
+  /**
+   * Calcula pode_gerar_pedido para vários orçamentos de uma vez (batch).
+   * orcamentos: array de { id, empresa_id, json_itens }
+   * Retorna: Map<orcamentoId, { pode_gerar_pedido }>
+   */
+  static async getRequerPedidoCompraBatch(orcamentos) {
+    const result = new Map();
+    if (!orcamentos || orcamentos.length === 0) return result;
+
+    const pairs = []; // { orcamentoId, empresaId, itens }
+    for (const o of orcamentos) {
+      const itens = getItensComProduto(o.json_itens);
+      if (itens.length === 0) {
+        result.set(o.id, { pode_gerar_pedido: false });
+        continue;
+      }
+      const empresaId = o.empresa_id != null ? Number(o.empresa_id) : null;
+      if (!empresaId) {
+        result.set(o.id, { pode_gerar_pedido: false });
+        continue;
+      }
+      pairs.push({ orcamentoId: o.id, empresaId, itens });
+    }
+
+    if (pairs.length === 0) return result;
+
+    const allPairs = new Set();
+    for (const p of pairs) {
+      for (const it of p.itens) {
+        allPairs.add(`${p.empresaId}-${it.produto_id}`);
+      }
+    }
+
+    const conditions = [];
+    const params = [];
+    for (const key of allPairs) {
+      const [empId, prodId] = key.split("-").map(Number);
+      conditions.push("(product_id = ? AND empresa_id = ?)");
+      params.push(prodId, empId);
+    }
+    const whereSql = conditions.join(" OR ");
+
+    const [stockRows] = await db.query(
+      `SELECT product_id, empresa_id, qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget
+       FROM stock_items WHERE ${whereSql}`,
+      params
+    );
+
+    const saldoByKey = new Map();
+    for (const r of stockRows) {
+      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - Number(r.qty_in_budget);
+      saldoByKey.set(`${r.empresa_id}-${r.product_id}`, Math.max(0, disponivel));
+    }
+
+    for (const p of pairs) {
+      let podeGerarPedido = false;
+      for (const it of p.itens) {
+        const saldo = saldoByKey.get(`${p.empresaId}-${it.produto_id}`) ?? 0;
+        if (it.quantidade_solicitada > saldo) {
+          podeGerarPedido = true;
+          break;
+        }
+      }
+      result.set(p.orcamentoId, { pode_gerar_pedido: podeGerarPedido });
+    }
+
+    return result;
+  }
+
   /**
    * Verifica disponibilidade por item e cria pré-pedido ou transfer_order se necessário
    * Regra: in_stock | needs_transfer (+ transfer_order_id) | needs_purchase (+ pre_order_id)
