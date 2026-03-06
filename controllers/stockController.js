@@ -26,19 +26,37 @@ const createEntrySchema = z.object({
 
 /**
  * Lista saldos de estoque (por produto e por empresa/loja)
- * Query: productId, empresa_id, q (busca por código/descrição/código fábrica), page, limit
+ * Query: productId, empresa_id, q, fabrica_id, incluir_sem_vinculo, sortBy, sortDir, page, limit
  */
 async function listBalances(req, res) {
   try {
-    const { productId, empresa_id, locationId, q, page = 1, limit = 2000 } = req.query;
+    const {
+      productId,
+      empresa_id,
+      locationId,
+      q,
+      fabrica_id,
+      incluir_sem_vinculo,
+      sortBy,
+      sortDir,
+      page = 1,
+      limit = 2000,
+    } = req.query;
+
     const limitNum = Math.min(Number(limit) || 2000, 2000);
     const pageNum = Math.max(1, Number(page) || 1);
     const offset = (pageNum - 1) * limitNum;
+
+    const fabricaIdParam = Array.isArray(fabrica_id) ? fabrica_id : fabrica_id;
 
     const filters = {
       productId: productId ? Number(productId) : undefined,
       empresa_id: empresa_id != null ? Number(empresa_id) : (locationId != null ? Number(locationId) : undefined),
       q: q ? String(q).trim() || undefined : undefined,
+      fabrica_id: fabricaIdParam,
+      incluir_sem_vinculo: incluir_sem_vinculo,
+      sortBy: sortBy || "product_name",
+      sortDir: sortDir || "asc",
       limit: limitNum,
       offset,
     };

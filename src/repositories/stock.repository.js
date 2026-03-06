@@ -30,11 +30,21 @@ async function getProdutoIdsComVinculados(q) {
 export class StockRepository {
   /**
    * Busca saldos de estoque (espelho completo: TODOS os produtos × empresas)
-   * Usa LEFT JOIN produtos×empresas para garantir espelho completo mesmo sem registro em stock_items
-   * Suporta q (busca por código, descrição, codigo_fabrica, observacao + triangularização), productId, empresa_id, page, limit
+   * Suporta: productId, empresa_id, q, fabrica_id, incluir_sem_vinculo, sortBy, sortDir, page, limit
    */
   static async getBalances(filters = {}) {
-    const { productId, empresa_id, q, limit = 2000, offset = 0 } = filters;
+    const {
+      productId,
+      empresa_id,
+      q,
+      fabrica_id,
+      incluir_sem_vinculo,
+      sortBy = "product_name",
+      sortDir = "asc",
+      limit = 2000,
+      offset = 0,
+    } = filters;
+
     const whereParts = [];
     const params = [];
 
@@ -58,7 +68,90 @@ export class StockRepository {
       params.push(...ids);
     }
 
+    // Filtro por fábrica: fabrica_id (array) e/ou incluir_sem_vinculo
+    const fabricaIds = Array.isArray(fabrica_id)
+      ? fabrica_id.map((id) => Number(id)).filter((id) => id > 0)
+      : typeof fabrica_id === "string" && fabrica_id
+        ? fabrica_id.split(",").map((id) => Number(id.trim())).filter((id) => id > 0)
+        : [];
+    const incluirSemVinculo = incluir_sem_vinculo === true || incluir_sem_vinculo === "true" || incluir_sem_vinculo === "1";
+
+    if (fabricaIds.length > 0 || incluirSemVinculo) {
+      try {
+        const [[{ pfExists }]] = await db.query(
+          `SELECT COUNT(*) > 0 AS pfExists FROM information_schema.tables
+           WHERE table_schema = DATABASE() AND table_name = 'produto_fabrica'`
+        );
+        const [[{ fExists }]] = await db.query(
+          `SELECT COUNT(*) > 0 AS fExists FROM information_schema.tables
+           WHERE table_schema = DATABASE() AND table_name = 'fabricas'`
+        );
+
+        const conds = [];
+        if (fabricaIds.length > 0 && pfExists) {
+          const ph = fabricaIds.map(() => "?").join(",");
+          conds.push(`p.id IN (SELECT produto_id FROM produto_fabrica WHERE fabrica_id IN (${ph}))`);
+          params.push(...fabricaIds);
+        }
+        if (fabricaIds.length > 0 && fExists) {
+          const ph = fabricaIds.map(() => "?").join(",");
+          conds.push(`p.id IN (SELECT p2.id FROM produtos p2 INNER JOIN fabricas f ON p2.codigo_fabrica = f.codigo AND f.id IN (${ph}))`);
+          params.push(...fabricaIds);
+        }
+        if (incluirSemVinculo) {
+          if (pfExists && fExists) {
+            conds.push(`(p.id NOT IN (SELECT produto_id FROM produto_fabrica)
+              AND (p.codigo_fabrica IS NULL OR p.codigo_fabrica = '' OR p.id NOT IN (
+                SELECT p2.id FROM produtos p2 INNER JOIN fabricas f ON p2.codigo_fabrica = f.codigo
+              )))`);
+          } else if (pfExists) {
+            conds.push(`p.id NOT IN (SELECT produto_id FROM produto_fabrica)`);
+          } else {
+            conds.push(`(p.codigo_fabrica IS NULL OR p.codigo_fabrica = '')`);
+          }
+        }
+        if (conds.length > 0) {
+          whereParts.push(`(${conds.join(" OR ")})`);
+        }
+      } catch (e) {
+        if (e.code !== "ER_NO_SUCH_TABLE") console.warn("[stock] fabrica filter:", e.message);
+      }
+    }
+
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    // Ordenação: sortBy (total_fisico, total_disponivel, qty_on_hand, etc.) e sortDir
+    const sortDirSql = String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
+    let orderBy = "p.descricao, e.nome_fantasia";
+
+    const totalSortMap = {
+      total_fisico: `(SELECT COALESCE(SUM(si2.qty_on_hand), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
+      total_disponivel: `(SELECT COALESCE(SUM(si2.qty_on_hand - COALESCE(si2.qty_reserved,0) - COALESCE(si2.qty_in_budget,0)), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
+      total_reservado: `(SELECT COALESCE(SUM(si2.qty_reserved), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
+      total_em_orcamento: `(SELECT COALESCE(SUM(si2.qty_in_budget), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
+    };
+    const colSortMap = {
+      product_id: "p.id",
+      product_code: "p.codigo_produto",
+      product_factory_code: "p.codigo_fabrica",
+      product_name: "p.descricao",
+      empresa_id: "e.id",
+      empresa_nome: "e.nome_fantasia",
+      qty_on_hand: "COALESCE(si.qty_on_hand, 0)",
+      qty_reserved: "COALESCE(si.qty_reserved, 0)",
+      qty_in_budget: "COALESCE(si.qty_in_budget, 0)",
+      qty_available: "(COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0))",
+    };
+
+    const qtyEmpresaMatch = /^qty_empresa_(\d+)$/.exec(sortBy);
+    if (qtyEmpresaMatch) {
+      const empId = Number(qtyEmpresaMatch[1]);
+      orderBy = `(SELECT COALESCE(si2.qty_on_hand, 0) FROM stock_items si2 WHERE si2.product_id = p.id AND si2.empresa_id = ${empId}) ${sortDirSql}, p.descricao, e.nome_fantasia`;
+    } else if (totalSortMap[sortBy]) {
+      orderBy = `${totalSortMap[sortBy]} ${sortDirSql}, p.descricao, e.nome_fantasia`;
+    } else if (colSortMap[sortBy]) {
+      orderBy = `${colSortMap[sortBy]} ${sortDirSql}, p.descricao, e.nome_fantasia`;
+    }
 
     const [rows] = await db.query(
       `SELECT p.id AS product_id,
@@ -76,7 +169,7 @@ export class StockRepository {
        CROSS JOIN empresas e
        LEFT JOIN stock_items si ON si.product_id = p.id AND si.empresa_id = e.id
        ${whereSql}
-       ORDER BY p.descricao, e.nome_fantasia
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, Number(limit) || 2000, Number(offset) || 0]
     );

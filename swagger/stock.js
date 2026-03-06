@@ -23,6 +23,29 @@
  *           type: string
  *         description: Busca por código, descrição ou código de fábrica
  *       - in: query
+ *         name: fabrica_id
+ *         schema:
+ *           type: integer
+ *         description: IDs das fábricas (repetir para múltiplas). Ex fabrica_id=1&fabrica_id=2
+ *       - in: query
+ *         name: incluir_sem_vinculo
+ *         schema:
+ *           type: boolean
+ *         description: Se true, inclui produtos sem vínculo com fábrica
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [total_fisico, total_disponivel, total_reservado, total_em_orcamento, qty_on_hand, qty_reserved, qty_in_budget, qty_available, product_code, product_name]
+ *         description: Para loja específica use qty_empresa_{id} (ex qty_empresa_1)
+ *         description: Campo para ordenação
+ *       - in: query
+ *         name: sortDir
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         description: Direção (asc=menor para maior, desc=maior para menor)
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
