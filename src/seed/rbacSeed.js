@@ -33,7 +33,8 @@ export async function seedRBAC() {
           ('contabil', 'Fiscal/Contábil', 'Exportações e DRE'),
           ('relatorios', 'Relatórios', 'Relatórios de vendas, oficina, estoque e financeiro'),
           ('admin', 'Administração', 'Empresas, usuários, roles, templates e configurações'),
-          ('rh', 'RH', 'Funcionários e cargos')
+          ('rh', 'RH', 'Funcionários e cargos'),
+          ('vinculos', 'Vínculos', 'Vínculos entre produtos e fábricas')
       `);
     } catch (modErr) {
       if (modErr.code !== "ER_NO_SUCH_TABLE") console.warn("Seed modules:", modErr.message);
@@ -103,7 +104,11 @@ export async function seedRBAC() {
         ('admin.roles.manage', 'Gerenciar roles', 'admin'),
         ('admin.companies.manage', 'Gerenciar empresas', 'admin'),
         ('admin.templates.manage', 'Gerenciar templates', 'admin'),
-        ('admin.integrations.manage', 'Gerenciar integrações', 'admin')
+        ('admin.integrations.manage', 'Gerenciar integrações', 'admin'),
+        ('vinculos.read', 'Visualizar vínculos de produtos e fábricas', 'vinculos'),
+        ('vinculos.create', 'Criar vínculos e cadastrar fábricas', 'vinculos'),
+        ('vinculos.update', 'Editar vínculos e fábricas', 'vinculos'),
+        ('vinculos.delete', 'Remover vínculos e fábricas', 'vinculos')
     `);
 
     // Buscar IDs das permissões

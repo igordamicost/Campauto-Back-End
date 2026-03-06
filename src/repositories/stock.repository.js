@@ -2,13 +2,36 @@ import { db } from "../config/database.js";
 import { XMLParser } from "fast-xml-parser";
 
 /**
+ * Retorna IDs de produtos que correspondem à busca q incluindo triangularização (vínculos)
+ */
+async function getProdutoIdsComVinculados(q) {
+  const term = `%${String(q).trim()}%`;
+  const [direct] = await db.query(
+    `SELECT id FROM produtos WHERE codigo_produto LIKE ? OR codigo_empresa LIKE ? OR descricao LIKE ? OR codigo_fabrica LIKE ? OR observacao LIKE ?`,
+    [term, term, term, term, term]
+  );
+  const ids = new Set(direct.map((r) => r.id));
+
+  try {
+    const { VinculosRepository } = await import("./vinculos.repository.js");
+    for (const r of direct) {
+      const similares = await VinculosRepository.getSimilaresByProdutoId(r.id);
+      similares.forEach((p) => ids.add(p.id));
+    }
+  } catch (e) {
+    if (e.code !== "ER_NO_SUCH_TABLE") console.warn("[stock] vinculos:", e.message);
+  }
+  return Array.from(ids);
+}
+
+/**
  * Repositório para operações de Estoque (por empresa/loja)
  */
 export class StockRepository {
   /**
    * Busca saldos de estoque (espelho completo: TODOS os produtos × empresas)
    * Usa LEFT JOIN produtos×empresas para garantir espelho completo mesmo sem registro em stock_items
-   * Suporta q (busca por código, descrição, codigo_fabrica, observacao), productId, empresa_id, page, limit
+   * Suporta q (busca por código, descrição, codigo_fabrica, observacao + triangularização), productId, empresa_id, page, limit
    */
   static async getBalances(filters = {}) {
     const { productId, empresa_id, q, limit = 2000, offset = 0 } = filters;
@@ -26,9 +49,13 @@ export class StockRepository {
     }
 
     if (q && String(q).trim()) {
-      const term = `%${String(q).trim()}%`;
-      whereParts.push("(p.codigo_produto LIKE ? OR p.codigo_empresa LIKE ? OR p.descricao LIKE ? OR p.codigo_fabrica LIKE ? OR p.observacao LIKE ?)");
-      params.push(term, term, term, term, term);
+      const ids = await getProdutoIdsComVinculados(q);
+      if (ids.length === 0) {
+        return { data: [], total: 0 };
+      }
+      const placeholders = ids.map(() => "?").join(",");
+      whereParts.push(`p.id IN (${placeholders})`);
+      params.push(...ids);
     }
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
