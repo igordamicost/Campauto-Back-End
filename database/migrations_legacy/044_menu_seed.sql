@@ -86,6 +86,8 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 SELECT id, 'vinculos', 'Vínculos de Produtos', '/dashboard/vinculos/produtos', 'Link', 0, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT id, 'vinculos', 'Fábricas', '/dashboard/vinculos/fabricas', 'Building2', 1, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Kits', '/dashboard/vinculos/kits', 'Package', 2, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 
 -- Nível 2: Filhos de Relatórios
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)

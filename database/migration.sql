@@ -1,5 +1,5 @@
 -- Migration consolidada - gerada por build-migration.js
--- Contém todas as alterações de 001 a 056
+-- Contém todas as alterações de 001 a 057
 -- Executada pelo MigrationService com logs por etapa
 
 USE campauto;
@@ -2032,6 +2032,8 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 SELECT id, 'vinculos', 'Vínculos de Produtos', '/dashboard/vinculos/produtos', 'Link', 0, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT id, 'vinculos', 'Fábricas', '/dashboard/vinculos/fabricas', 'Building2', 1, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Kits', '/dashboard/vinculos/kits', 'Package', 2, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 
 -- Nível 2: Filhos de Relatórios
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
@@ -2866,4 +2868,33 @@ CREATE TABLE IF NOT EXISTS produto_vinculo_grupo_itens (
 -- ========== 2. Remover tabela antiga (produto_vinculos) ==========
 -- Dados existentes serão perdidos; recrie vínculos no novo modelo (grupos)
 DROP TABLE IF EXISTS produto_vinculos;
+
+-- ========== STEP: 058_kits_module ==========
+-- Migration 058: Módulo Kits (Vínculos)
+-- Kits agrupam produtos (ex: Kit troca de óleo = Óleo + Filtro)
+-- Ao adicionar kit no orçamento, todos os produtos são incluídos
+
+-- ========== 1. Tabela kits ==========
+CREATE TABLE IF NOT EXISTS kits (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_kit_nome (nome)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ========== 2. Tabela kit_itens ==========
+CREATE TABLE IF NOT EXISTS kit_itens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  kit_id INT NOT NULL,
+  produto_id INT NOT NULL,
+  quantidade DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+  ordem INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ki_kit FOREIGN KEY (kit_id) REFERENCES kits(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ki_produto FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE,
+  INDEX idx_ki_kit (kit_id),
+  INDEX idx_ki_produto (produto_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

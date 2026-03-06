@@ -117,6 +117,22 @@
       ]
     },
     {
+      "module_key": "vinculos",
+      "label": "Vínculos",
+      "path": null,
+      "icon": "Link",
+      "order": 20,
+      "permission": "vinculos.read",
+      "permission_create": "vinculos.create",
+      "permission_update": "vinculos.update",
+      "permission_delete": "vinculos.delete",
+      "children": [
+        { "label": "Vínculos de Produtos", "path": "/dashboard/vinculos/produtos", "icon": "Link", "order": 0, "permission": "vinculos.read" },
+        { "label": "Fábricas", "path": "/dashboard/vinculos/fabricas", "icon": "Building2", "order": 1, "permission": "vinculos.read" },
+        { "label": "Kits", "path": "/dashboard/vinculos/kits", "icon": "Package", "order": 2, "permission": "vinculos.read" }
+      ]
+    },
+    {
       "module_key": "admin",
       "label": "Administração",
       "path": null,
@@ -145,11 +161,13 @@
     { "key": "financeiro", "label": "Financeiro", "icon": "DollarSign", "order": 5 },
     { "key": "contabil", "label": "Fiscal/Contábil", "icon": "FileText", "order": 6 },
     { "key": "relatorios", "label": "Relatórios", "icon": "BarChart3", "order": 7 },
+    { "key": "vinculos", "label": "Vínculos", "icon": "Link", "order": 20 },
     { "key": "admin", "label": "Administração", "icon": "Settings", "order": 8 },
     { "key": "rh", "label": "RH", "icon": "Users", "order": 9 }
   ],
   "icons_reference": [
     "LayoutDashboard", "ShoppingCart", "UserCircle", "Wrench", "Package",
+    "Link",
     "DollarSign", "FileText", "BarChart3", "Settings", "Users", "FileCheck",
     "ShoppingBag", "Building2", "Car", "ClipboardList", "Boxes", "PackageSearch",
     "PackagePlus", "ScanBarcode", "ArrowUpDown", "Calendar", "Receipt", "CreditCard",

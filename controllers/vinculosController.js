@@ -170,6 +170,80 @@ async function desvincularProduto(req, res) {
   }
 }
 
+// --- Kits ---
+
+async function listKits(req, res) {
+  try {
+    const { page = 1, limit = 50, q } = req.query;
+    const offset = (Math.max(1, Number(page)) - 1) * Number(limit);
+    const { data, total } = await VinculosRepository.listKits({
+      q: q ? String(q).trim() || undefined : undefined,
+      limit: Number(limit) || 50,
+      offset,
+    });
+    return res.json({ data, total, page: Number(page), perPage: Number(limit) });
+  } catch (error) {
+    console.error("[vinculos] listKits:", error);
+    return res.status(500).json({ message: "Erro ao listar kits" });
+  }
+}
+
+async function createKit(req, res) {
+  try {
+    const { nome, produto_ids } = req.body;
+    if (!nome || !String(nome).trim()) {
+      return res.status(400).json({ message: "nome é obrigatório" });
+    }
+    const id = await VinculosRepository.createKit({
+      nome: nome.trim(),
+      produto_ids: Array.isArray(produto_ids) ? produto_ids : [],
+    });
+    return res.status(201).json({ id });
+  } catch (error) {
+    console.error("[vinculos] createKit:", error);
+    return res.status(500).json({ message: "Erro ao criar kit" });
+  }
+}
+
+async function updateKit(req, res) {
+  try {
+    const { nome, produto_ids } = req.body;
+    const kit = await VinculosRepository.getKitById(req.params.id);
+    if (!kit) return res.status(404).json({ message: "Kit não encontrado" });
+    await VinculosRepository.updateKit(req.params.id, {
+      nome: nome !== undefined ? nome : undefined,
+      produto_ids: produto_ids !== undefined ? produto_ids : undefined,
+    });
+    return res.json({ message: "Kit atualizado" });
+  } catch (error) {
+    console.error("[vinculos] updateKit:", error);
+    return res.status(500).json({ message: "Erro ao atualizar kit" });
+  }
+}
+
+async function deleteKit(req, res) {
+  try {
+    const ok = await VinculosRepository.deleteKit(req.params.id);
+    if (!ok) return res.status(404).json({ message: "Kit não encontrado" });
+    return res.json({ message: "Kit removido" });
+  } catch (error) {
+    console.error("[vinculos] deleteKit:", error);
+    return res.status(500).json({ message: "Erro ao remover kit" });
+  }
+}
+
+async function getKitProdutos(req, res) {
+  try {
+    const kit = await VinculosRepository.getKitById(req.params.id);
+    if (!kit) return res.status(404).json({ message: "Kit não encontrado" });
+    const data = await VinculosRepository.getKitProdutos(req.params.id);
+    return res.json({ data });
+  } catch (error) {
+    console.error("[vinculos] getKitProdutos:", error);
+    return res.status(500).json({ message: "Erro ao listar produtos do kit" });
+  }
+}
+
 export {
   listProdutoVinculos,
   createProdutoVinculo,
@@ -183,5 +257,10 @@ export {
   getFabricaProdutos,
   vincularProdutos,
   desvincularProduto,
+  listKits,
+  createKit,
+  updateKit,
+  deleteKit,
+  getKitProdutos,
   asyncHandler,
 };

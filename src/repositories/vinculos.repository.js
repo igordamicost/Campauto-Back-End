@@ -265,4 +265,162 @@ export class VinculosRepository {
     );
     return result.affectedRows > 0;
   }
+
+  // --- Kits ---
+
+  /**
+   * Lista kits com paginação e busca por nome
+   */
+  static async listKits(filters = {}) {
+    const { q, limit = 50, offset = 0 } = filters;
+    const whereParts = [];
+    const params = [];
+
+    if (q && String(q).trim()) {
+      whereParts.push("k.nome LIKE ?");
+      params.push(`%${String(q).trim()}%`);
+    }
+
+    const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    const [rows] = await db.query(
+      `SELECT k.id, k.nome, k.created_at, k.updated_at,
+              (SELECT COUNT(*) FROM kit_itens ki WHERE ki.kit_id = k.id) AS produtos_count
+       FROM kits k
+       ${whereSql}
+       ORDER BY k.nome
+       LIMIT ? OFFSET ?`,
+      [...params, Number(limit), Number(offset)]
+    );
+
+    const [[countRow]] = await db.query(
+      `SELECT COUNT(*) AS total FROM kits k ${whereSql}`,
+      params
+    );
+
+    return { data: rows, total: countRow?.total ?? 0 };
+  }
+
+  /**
+   * Busca kit por id
+   */
+  static async getKitById(id) {
+    const [rows] = await db.query("SELECT * FROM kits WHERE id = ?", [Number(id)]);
+    return rows[0] || null;
+  }
+
+  /**
+   * Cria kit com nome e lista de produtos
+   * produto_ids pode ser array de ids ou array de { produto_id, quantidade?, ordem? }
+   */
+  static async createKit({ nome, produto_ids }) {
+    const nomeStr = String(nome || "").trim();
+    if (!nomeStr) return null;
+
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.query("INSERT INTO kits (nome) VALUES (?)", [nomeStr]);
+      const kitId = result.insertId;
+
+      const items = Array.isArray(produto_ids) ? produto_ids : [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const pid = typeof it === "object" ? Number(it?.produto_id ?? it?.produtoId) : Number(it);
+        const qty = typeof it === "object" ? parseFloat(it?.quantidade ?? it?.qty ?? 1) : 1;
+        if (pid > 0) {
+          await connection.query(
+            "INSERT INTO kit_itens (kit_id, produto_id, quantidade, ordem) VALUES (?, ?, ?, ?)",
+            [kitId, pid, qty, i]
+          );
+        }
+      }
+      await connection.commit();
+      return kitId;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Atualiza kit (nome e/ou produto_ids)
+   */
+  static async updateKit(id, { nome, produto_ids }) {
+    const kitId = Number(id);
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      if (nome !== undefined) {
+        await connection.query("UPDATE kits SET nome = ? WHERE id = ?", [String(nome).trim(), kitId]);
+      }
+      if (produto_ids !== undefined) {
+        await connection.query("DELETE FROM kit_itens WHERE kit_id = ?", [kitId]);
+        const items = Array.isArray(produto_ids) ? produto_ids : [];
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          const pid = typeof it === "object" ? Number(it?.produto_id ?? it?.produtoId) : Number(it);
+          const qty = typeof it === "object" ? parseFloat(it?.quantidade ?? it?.qty ?? 1) : 1;
+          if (pid > 0) {
+            await connection.query(
+              "INSERT INTO kit_itens (kit_id, produto_id, quantidade, ordem) VALUES (?, ?, ?, ?)",
+              [kitId, pid, qty, i]
+            );
+          }
+        }
+      }
+      await connection.commit();
+      return true;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Remove kit
+   */
+  static async deleteKit(id) {
+    const [result] = await db.query("DELETE FROM kits WHERE id = ?", [Number(id)]);
+    return result.affectedRows > 0;
+  }
+
+  /**
+   * Lista produtos do kit com objeto produto completo (para orçamento)
+   * Resposta: { data: [{ id, kit_id, produto_id, quantidade, ordem, produto: {...} }] }
+   */
+  static async getKitProdutos(kitId) {
+    const [rows] = await db.query(
+      `SELECT ki.id, ki.kit_id, ki.produto_id, ki.quantidade, ki.ordem,
+              p.id AS p_id, p.codigo_produto, p.codigo_fabrica, p.descricao, p.observacao,
+              p.preco_custo, p.unidade
+       FROM kit_itens ki
+       INNER JOIN produtos p ON p.id = ki.produto_id
+       WHERE ki.kit_id = ?
+       ORDER BY ki.ordem, ki.id`,
+      [Number(kitId)]
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      kit_id: r.kit_id,
+      produto_id: r.produto_id,
+      quantidade: parseFloat(r.quantidade) || 1,
+      ordem: r.ordem ?? 0,
+      produto: {
+        id: r.produto_id,
+        codigo_produto: r.codigo_produto,
+        codigo_fabrica: r.codigo_fabrica,
+        descricao: r.descricao,
+        observacao: r.observacao,
+        valor_unitario: r.preco_custo != null ? parseFloat(r.preco_custo) : null,
+        preco_custo: r.preco_custo != null ? parseFloat(r.preco_custo) : null,
+        unidade: r.unidade || "UN",
+      },
+    }));
+  }
 }
