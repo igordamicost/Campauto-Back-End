@@ -1,5 +1,5 @@
 -- Migration consolidada - gerada por build-migration.js
--- Contém todas as alterações de 001 a 055
+-- Contém todas as alterações de 001 a 056
 -- Executada pelo MigrationService com logs por etapa
 
 USE campauto;
@@ -1964,6 +1964,7 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 (NULL, 'financeiro', 'Financeiro', NULL, 'DollarSign', 5, 'finance.read', 'finance.create', 'finance.update', NULL, NULL),
 (NULL, 'contabil', 'Fiscal/Contábil', NULL, 'FileText', 6, 'accounting.read', NULL, 'accounting.export', NULL, NULL),
 (NULL, 'relatorios', 'Relatórios', NULL, 'BarChart3', 7, 'reports.read', NULL, NULL, NULL, NULL),
+(NULL, 'vinculos', 'Vínculos', NULL, 'Link', 20, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete'),
 (NULL, 'admin', 'Administração', NULL, 'Settings', 8, 'admin.roles.manage', NULL, NULL, NULL, NULL);
 
 -- Nível 2: Filhos de Vendas
@@ -2025,6 +2026,12 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 SELECT id, 'contabil', 'Exportações', '/dashboard/fiscal/exportacoes', 'FileText', 0, 'accounting.export', NULL, NULL, NULL, NULL FROM menu_items WHERE module_key = 'contabil' AND parent_id IS NULL LIMIT 1;
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT id, 'contabil', 'Resumos / DRE', '/dashboard/fiscal/dre', 'BarChart3', 1, 'accounting.read', NULL, NULL, NULL, NULL FROM menu_items WHERE module_key = 'contabil' AND parent_id IS NULL LIMIT 1;
+
+-- Nível 2: Filhos de Vínculos
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Vínculos de Produtos', '/dashboard/vinculos/produtos', 'Link', 0, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Fábricas', '/dashboard/vinculos/fabricas', 'Building2', 1, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 
 -- Nível 2: Filhos de Relatórios
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
@@ -2809,11 +2816,14 @@ ON DUPLICATE KEY UPDATE description = VALUES(description);
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE name = 'Gestor de Vínculos' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
 
--- ========== 8. Dar permissões vinculos à role DEV ==========
+-- ========== 8. Dar permissões vinculos às roles DEV e MASTER ==========
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
 
--- ========== 9. Menu Vínculos ==========
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
+
+-- ========== 9. Menu Vínculos (também em 044; aqui como fallback) ==========
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT NULL, 'vinculos', 'Vínculos', NULL, 'Link', 20, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete'
 FROM (SELECT 1) t
@@ -2828,4 +2838,32 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 SELECT m.id, 'vinculos', 'Fábricas', '/dashboard/vinculos/fabricas', 'Building2', 1, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete'
 FROM menu_items m WHERE m.module_key = 'vinculos' AND m.parent_id IS NULL
 AND NOT EXISTS (SELECT 1 FROM menu_items c WHERE c.parent_id = m.id AND c.path = '/dashboard/vinculos/fabricas');
+
+-- ========== STEP: 057_vinculos_grupos_model ==========
+-- Migration 057: Modelo de grupos para vínculos de produtos
+-- Substitui produto_vinculos (pares) por produto_vinculo_grupos + produto_vinculo_grupo_itens
+-- Permite criar grupo com vários produtos de uma vez: { produto_ids: [1,2,3,4,5] }
+
+-- ========== 1. Novas tabelas ==========
+CREATE TABLE IF NOT EXISTS produto_vinculo_grupos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS produto_vinculo_grupo_itens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  grupo_id INT NOT NULL,
+  produto_id INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_produto_grupo (produto_id),
+  CONSTRAINT fk_pvgi_grupo FOREIGN KEY (grupo_id) REFERENCES produto_vinculo_grupos(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pvgi_produto FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE,
+  INDEX idx_pvgi_grupo (grupo_id),
+  INDEX idx_pvgi_produto (produto_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ========== 2. Remover tabela antiga (produto_vinculos) ==========
+-- Dados existentes serão perdidos; recrie vínculos no novo modelo (grupos)
+DROP TABLE IF EXISTS produto_vinculos;
 

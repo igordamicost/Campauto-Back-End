@@ -18,6 +18,7 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 (NULL, 'financeiro', 'Financeiro', NULL, 'DollarSign', 5, 'finance.read', 'finance.create', 'finance.update', NULL, NULL),
 (NULL, 'contabil', 'Fiscal/Contábil', NULL, 'FileText', 6, 'accounting.read', NULL, 'accounting.export', NULL, NULL),
 (NULL, 'relatorios', 'Relatórios', NULL, 'BarChart3', 7, 'reports.read', NULL, NULL, NULL, NULL),
+(NULL, 'vinculos', 'Vínculos', NULL, 'Link', 20, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete'),
 (NULL, 'admin', 'Administração', NULL, 'Settings', 8, 'admin.roles.manage', NULL, NULL, NULL, NULL);
 
 -- Nível 2: Filhos de Vendas
@@ -79,6 +80,12 @@ INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permi
 SELECT id, 'contabil', 'Exportações', '/dashboard/fiscal/exportacoes', 'FileText', 0, 'accounting.export', NULL, NULL, NULL, NULL FROM menu_items WHERE module_key = 'contabil' AND parent_id IS NULL LIMIT 1;
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT id, 'contabil', 'Resumos / DRE', '/dashboard/fiscal/dre', 'BarChart3', 1, 'accounting.read', NULL, NULL, NULL, NULL FROM menu_items WHERE module_key = 'contabil' AND parent_id IS NULL LIMIT 1;
+
+-- Nível 2: Filhos de Vínculos
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Vínculos de Produtos', '/dashboard/vinculos/produtos', 'Link', 0, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
+INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
+SELECT id, 'vinculos', 'Fábricas', '/dashboard/vinculos/fabricas', 'Building2', 1, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete' FROM menu_items WHERE module_key = 'vinculos' AND parent_id IS NULL LIMIT 1;
 
 -- Nível 2: Filhos de Relatórios
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)

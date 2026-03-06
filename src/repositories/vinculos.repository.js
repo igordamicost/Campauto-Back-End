@@ -1,111 +1,131 @@
 import { db } from "../config/database.js";
 
 /**
- * Repositório para o módulo Vínculos (produtos e fábricas)
+ * Repositório para o módulo Vínculos (grupos de produtos + fábricas)
+ * Modelo: produto_vinculo_grupos + produto_vinculo_grupo_itens (um produto só pode estar em um grupo)
  */
 export class VinculosRepository {
   /**
-   * Lista vínculos entre produtos com paginação
+   * Lista grupos de vínculos com paginação
+   * Cada grupo contém os produtos vinculados (mesma peça, fabricantes diferentes)
    */
   static async listProdutoVinculos(filters = {}) {
     const { produto_id, limit = 50, offset = 0 } = filters;
-    const whereParts = [];
+    let whereSql = "";
     const params = [];
 
     if (produto_id != null) {
-      whereParts.push("(pv.produto_id_origem = ? OR pv.produto_id_vinculado = ?)");
-      params.push(Number(produto_id), Number(produto_id));
+      whereSql = `WHERE g.id IN (SELECT grupo_id FROM produto_vinculo_grupo_itens WHERE produto_id = ?)`;
+      params.push(Number(produto_id));
     }
 
-    const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
-
     const [rows] = await db.query(
-      `SELECT pv.id, pv.produto_id_origem, pv.produto_id_vinculado, pv.created_at,
-              po.descricao AS origem_descricao, po.codigo_fabrica AS origem_codigo_fabrica,
-              pv2.descricao AS vinculado_descricao, pv2.codigo_fabrica AS vinculado_codigo_fabrica
-       FROM produto_vinculos pv
-       LEFT JOIN produtos po ON po.id = pv.produto_id_origem
-       LEFT JOIN produtos pv2 ON pv2.id = pv.produto_id_vinculado
+      `SELECT g.id, g.created_at, g.updated_at
+       FROM produto_vinculo_grupos g
        ${whereSql}
-       ORDER BY pv.id DESC
+       ORDER BY g.id DESC
        LIMIT ? OFFSET ?`,
       [...params, Number(limit), Number(offset)]
     );
 
     const [[countRow]] = await db.query(
-      `SELECT COUNT(*) AS total FROM produto_vinculos pv ${whereSql}`,
+      `SELECT COUNT(*) AS total FROM produto_vinculo_grupos g ${whereSql}`,
       params
     );
 
-    return { data: rows, total: countRow?.total ?? 0 };
+    const grupoIds = rows.map((r) => r.id);
+    let produtosByGrupo = new Map();
+    if (grupoIds.length > 0) {
+      const ph = grupoIds.map(() => "?").join(",");
+      const [itens] = await db.query(
+        `SELECT gi.grupo_id, p.id, p.codigo_produto, p.codigo_fabrica, p.descricao
+         FROM produto_vinculo_grupo_itens gi
+         INNER JOIN produtos p ON p.id = gi.produto_id
+         WHERE gi.grupo_id IN (${ph})
+         ORDER BY gi.grupo_id, p.descricao`,
+        grupoIds
+      );
+      for (const it of itens) {
+        if (!produtosByGrupo.has(it.grupo_id)) produtosByGrupo.set(it.grupo_id, []);
+        produtosByGrupo.get(it.grupo_id).push({
+          id: it.id,
+          codigo_produto: it.codigo_produto,
+          codigo_fabrica: it.codigo_fabrica,
+          descricao: it.descricao,
+        });
+      }
+    }
+
+    const data = rows.map((r) => ({
+      id: r.id,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      produtos: produtosByGrupo.get(r.id) || [],
+    }));
+
+    return { data, total: countRow?.total ?? 0 };
   }
 
   /**
-   * Cria vínculo entre dois produtos (bidirecional: armazena apenas A-B, não B-A)
-   * Evita duplicatas: normaliza para menor id como origem
+   * Cria grupo com vários produtos. Body: { produto_ids: [1, 2, 3, 4, 5] }
+   * Produtos que já estão em outro grupo são removidos do grupo antigo e adicionados ao novo.
    */
-  static async createProdutoVinculo(produto_id_origem, produto_id_vinculado) {
-    const a = Number(produto_id_origem);
-    const b = Number(produto_id_vinculado);
-    if (a === b) return null;
-    const [origem, vinculado] = a < b ? [a, b] : [b, a];
+  static async createProdutoVinculo(produtoIds) {
+    if (!Array.isArray(produtoIds) || produtoIds.length === 0) return null;
+    const ids = [...new Set(produtoIds.map((id) => Number(id)).filter((id) => id > 0))];
+    if (ids.length === 0) return null;
 
-    const [result] = await db.query(
-      `INSERT INTO produto_vinculos (produto_id_origem, produto_id_vinculado)
-       VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE updated_at = NOW()`,
-      [origem, vinculado]
-    );
-    if (result.insertId) return result.insertId;
-    const [existing] = await db.query(
-      "SELECT id FROM produto_vinculos WHERE produto_id_origem = ? AND produto_id_vinculado = ?",
-      [origem, vinculado]
-    );
-    return existing[0]?.id ?? null;
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const placeholders = ids.map(() => "?").join(",");
+      await connection.query(`DELETE FROM produto_vinculo_grupo_itens WHERE produto_id IN (${placeholders})`, ids);
+      const [result] = await connection.query("INSERT INTO produto_vinculo_grupos () VALUES ()");
+      const grupoId = result.insertId;
+      for (const pid of ids) {
+        await connection.query(
+          "INSERT INTO produto_vinculo_grupo_itens (grupo_id, produto_id) VALUES (?, ?)",
+          [grupoId, pid]
+        );
+      }
+      await connection.commit();
+      return grupoId;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
   }
 
   /**
-   * Remove vínculo por id
+   * Remove grupo (e todos os itens) por id
    */
   static async deleteProdutoVinculo(id) {
-    const [result] = await db.query("DELETE FROM produto_vinculos WHERE id = ?", [Number(id)]);
+    const [result] = await db.query("DELETE FROM produto_vinculo_grupos WHERE id = ?", [Number(id)]);
     return result.affectedRows > 0;
   }
 
   /**
-   * Retorna o grupo de produtos similares (triangularização transitiva)
-   * Usa BFS para encontrar todos os produtos conectados
+   * Retorna produtos similares (grupo triangular) do produto
+   * Resposta: { data: [{ id, codigo_produto, codigo_fabrica, descricao, ... }] }
    */
   static async getSimilaresByProdutoId(produtoId) {
     const pid = Number(produtoId);
-    const visited = new Set([pid]);
-    const queue = [pid];
+    const [grupoRows] = await db.query(
+      `SELECT grupo_id FROM produto_vinculo_grupo_itens WHERE produto_id = ?`,
+      [pid]
+    );
+    if (!grupoRows || grupoRows.length === 0) return [];
 
-    while (queue.length > 0) {
-      const current = queue.shift();
-      const [rows] = await db.query(
-        `SELECT produto_id_origem, produto_id_vinculado FROM produto_vinculos
-         WHERE produto_id_origem = ? OR produto_id_vinculado = ?`,
-        [current, current]
-      );
-      for (const r of rows) {
-        const other = r.produto_id_origem === current ? r.produto_id_vinculado : r.produto_id_origem;
-        if (!visited.has(other)) {
-          visited.add(other);
-          queue.push(other);
-        }
-      }
-    }
-
-    const ids = Array.from(visited);
-    if (ids.length === 0) return [];
-
-    const placeholders = ids.map(() => "?").join(",");
+    const grupoId = grupoRows[0].grupo_id;
     const [produtos] = await db.query(
-      `SELECT id, codigo_produto, codigo_fabrica, descricao, observacao
-       FROM produtos WHERE id IN (${placeholders})
-       ORDER BY descricao`,
-      ids
+      `SELECT p.id, p.codigo_produto, p.codigo_fabrica, p.descricao, p.observacao
+       FROM produto_vinculo_grupo_itens gi
+       INNER JOIN produtos p ON p.id = gi.produto_id
+       WHERE gi.grupo_id = ?
+       ORDER BY p.descricao`,
+      [grupoId]
     );
     return produtos;
   }
@@ -244,33 +264,5 @@ export class VinculosRepository {
       [Number(fabricaId), Number(produtoId)]
     );
     return result.affectedRows > 0;
-  }
-
-  /**
-   * Retorna IDs de produtos no grupo de vínculos (para integração com busca de estoque)
-   */
-  static async getProdutoIdsNoGrupo(produtoId) {
-    const similares = await this.getSimilaresByProdutoId(produtoId);
-    return similares.map((p) => p.id);
-  }
-
-  /**
-   * Retorna IDs de produtos que têm codigo_fabrica = termo OU estão no grupo de algum produto com esse código
-   */
-  static async getProdutoIdsPorCodigoFabrica(termo) {
-    const t = String(termo || "").trim();
-    if (!t) return [];
-
-    const [rows] = await db.query(
-      "SELECT id FROM produtos WHERE codigo_fabrica LIKE ?",
-      [`%${t}%`]
-    );
-    const ids = new Set(rows.map((r) => r.id));
-
-    for (const r of rows) {
-      const similares = await this.getSimilaresByProdutoId(r.id);
-      similares.forEach((p) => ids.add(p.id));
-    }
-    return Array.from(ids);
   }
 }

@@ -119,17 +119,21 @@ export async function seedRBAC() {
       permMap[p.key] = p.id;
     });
 
-    // Política: apenas DEV tem permissões. Demais roles iniciam sem acesso.
+    // Política: DEV e MASTER têm todas as permissões. Demais roles iniciam sem acesso.
     await db.query("DELETE FROM role_permissions");
 
     const [devRole] = await db.query("SELECT id FROM roles WHERE name = 'DEV' LIMIT 1");
-    if (devRole.length > 0 && permissions.length > 0) {
-      const devId = devRole[0].id;
-      const devPerms = permissions.map((p) => [devId, p.id]);
-      await db.query(
-        `INSERT INTO role_permissions (role_id, permission_id) VALUES ?`,
-        [devPerms]
-      );
+    const [masterRole] = await db.query("SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1");
+    if (permissions.length > 0) {
+      const perms = permissions.map((p) => p.id);
+      if (devRole.length > 0) {
+        const devPerms = perms.map((pid) => [devRole[0].id, pid]);
+        await db.query(`INSERT INTO role_permissions (role_id, permission_id) VALUES ?`, [devPerms]);
+      }
+      if (masterRole.length > 0) {
+        const masterPerms = perms.map((pid) => [masterRole[0].id, pid]);
+        await db.query(`INSERT INTO role_permissions (role_id, permission_id) VALUES ?`, [masterPerms]);
+      }
     }
 
     // Atualizar usuário id 2 para role DEV (se existir)

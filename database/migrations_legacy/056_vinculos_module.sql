@@ -67,11 +67,14 @@ ON DUPLICATE KEY UPDATE description = VALUES(description);
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE name = 'Gestor de Vínculos' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
 
--- ========== 8. Dar permissões vinculos à role DEV ==========
+-- ========== 8. Dar permissões vinculos às roles DEV e MASTER ==========
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE name = 'DEV' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
 
--- ========== 9. Menu Vínculos ==========
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE name = 'MASTER' LIMIT 1), id FROM permissions WHERE `key` IN ('vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.delete');
+
+-- ========== 9. Menu Vínculos (também em 044; aqui como fallback) ==========
 INSERT INTO menu_items (parent_id, module_key, label, path, icon, `order`, permission, permission_create, permission_update, permission_update_partial, permission_delete)
 SELECT NULL, 'vinculos', 'Vínculos', NULL, 'Link', 20, 'vinculos.read', 'vinculos.create', 'vinculos.update', 'vinculos.update', 'vinculos.delete'
 FROM (SELECT 1) t

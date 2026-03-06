@@ -23,13 +23,13 @@ async function listProdutoVinculos(req, res) {
 
 async function createProdutoVinculo(req, res) {
   try {
-    const { produto_id_origem, produto_id_vinculado } = req.body;
-    if (!produto_id_origem || !produto_id_vinculado) {
-      return res.status(400).json({ message: "produto_id_origem e produto_id_vinculado são obrigatórios" });
+    const { produto_ids } = req.body;
+    if (!Array.isArray(produto_ids) || produto_ids.length === 0) {
+      return res.status(400).json({ message: "produto_ids (array) é obrigatório" });
     }
-    const id = await VinculosRepository.createProdutoVinculo(produto_id_origem, produto_id_vinculado);
+    const id = await VinculosRepository.createProdutoVinculo(produto_ids);
     if (!id) {
-      return res.status(400).json({ message: "Não foi possível criar o vínculo (produtos iguais ou inválidos)" });
+      return res.status(400).json({ message: "Não foi possível criar o grupo" });
     }
     return res.status(201).json({ id });
   } catch (error) {
@@ -53,7 +53,7 @@ async function getSimilares(req, res) {
   try {
     const { produtoId } = req.params;
     const data = await VinculosRepository.getSimilaresByProdutoId(produtoId);
-    return res.json(data);
+    return res.json({ data });
   } catch (error) {
     console.error("[vinculos] getSimilares:", error);
     return res.status(500).json({ message: "Erro ao buscar similares" });
