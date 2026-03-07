@@ -1,5 +1,5 @@
 -- Migration consolidada - gerada por build-migration.js
--- Contém todas as alterações de 001 a 058
+-- Contém todas as alterações de 001 a 060
 -- Executada pelo MigrationService com logs por etapa
 
 USE campauto;
@@ -2908,4 +2908,37 @@ FROM menu_items m
 WHERE m.module_key = 'vinculos' AND m.parent_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM menu_items c WHERE c.parent_id = m.id AND c.path = '/dashboard/vinculos/kits')
 LIMIT 1;
+
+-- ========== STEP: 060_pedidos_compra_orcamento_bloqueado ==========
+-- Migration 060: orcamento_id em pedidos_compra + qty_blocked (bloqueados)
+-- Permite vincular pedido de compra a orçamento e calcular quantidade bloqueada
+
+-- 1) Adicionar orcamento_id em pedidos_compra
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE() AND table_name = 'pedidos_compra' AND column_name = 'orcamento_id'
+);
+SET @sql_add := IF(@col_exists = 0,
+  'ALTER TABLE pedidos_compra ADD COLUMN orcamento_id INT NULL AFTER empresa_id,
+   ADD INDEX idx_orcamento (orcamento_id),
+   ADD CONSTRAINT fk_pc_orcamento FOREIGN KEY (orcamento_id) REFERENCES orcamentos(id) ON DELETE SET NULL',
+  'SELECT 1');
+PREPARE stmt FROM @sql_add;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ========== STEP: 061_produtos_preco_sugerido ==========
+-- Migration 061: Coluna preco_sugerido em produtos
+-- Último preço de venda (sugestão para próximos orçamentos) - atualizado ao faturar orçamento
+
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE() AND table_name = 'produtos' AND column_name = 'preco_sugerido'
+);
+SET @sql_add := IF(@col_exists = 0,
+  'ALTER TABLE produtos ADD COLUMN preco_sugerido DECIMAL(10,2) NULL COMMENT ''Último preço de venda (sugestão)'' AFTER preco_custo',
+  'SELECT 1');
+PREPARE stmt FROM @sql_add;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 

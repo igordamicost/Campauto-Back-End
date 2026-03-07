@@ -2,6 +2,50 @@ import { db } from "../config/database.js";
 import { XMLParser } from "fast-xml-parser";
 
 /**
+ * Retorna mapa de qty_blocked por (product_id, empresa_id).
+ * Bloqueado = itens em pedidos_compra com orcamento_id, status != Recebido/Cancelado
+ */
+export async function getQtyBlockedMap() {
+  try {
+    const [[{ hasCol }]] = await db.query(
+      `SELECT COUNT(*) > 0 AS hasCol FROM information_schema.COLUMNS
+       WHERE table_schema = DATABASE() AND table_name = 'pedidos_compra' AND column_name = 'orcamento_id'`
+    );
+    if (!hasCol) return new Map();
+
+    const [rows] = await db.query(
+      `SELECT empresa_id, json_itens FROM pedidos_compra
+       WHERE orcamento_id IS NOT NULL AND status NOT IN ('Recebido', 'Cancelado')`
+    );
+
+    const map = new Map();
+    for (const r of rows) {
+      const empresaId = Number(r.empresa_id);
+      let itens = r.json_itens;
+      if (typeof itens === "string") {
+        try {
+          itens = JSON.parse(itens || "[]");
+        } catch {
+          continue;
+        }
+      }
+      if (!Array.isArray(itens)) continue;
+      for (const it of itens) {
+        const produtoId = Number(it?.produto_id ?? it?.product_id);
+        const qty = Number(it?.quantidade ?? it?.quantity) || 0;
+        if (!produtoId || qty <= 0) continue;
+        const key = `${produtoId}-${empresaId}`;
+        map.set(key, (map.get(key) || 0) + qty);
+      }
+    }
+    return map;
+  } catch (e) {
+    if (e.code !== "ER_NO_SUCH_TABLE") console.warn("[stock] getQtyBlockedMap:", e.message);
+    return new Map();
+  }
+}
+
+/**
  * Retorna IDs de produtos que correspondem à busca q incluindo triangularização (vínculos)
  */
 async function getProdutoIdsComVinculados(q) {
@@ -126,7 +170,7 @@ export class StockRepository {
 
     const totalSortMap = {
       total_fisico: `(SELECT COALESCE(SUM(si2.qty_on_hand), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
-      total_disponivel: `(SELECT COALESCE(SUM(si2.qty_on_hand - COALESCE(si2.qty_reserved,0) - COALESCE(si2.qty_in_budget,0)), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
+      total_disponivel: `(SELECT COALESCE(SUM(si2.qty_on_hand - COALESCE(si2.qty_reserved,0)), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
       total_reservado: `(SELECT COALESCE(SUM(si2.qty_reserved), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
       total_em_orcamento: `(SELECT COALESCE(SUM(si2.qty_in_budget), 0) FROM stock_items si2 WHERE si2.product_id = p.id)`,
     };
@@ -140,7 +184,7 @@ export class StockRepository {
       qty_on_hand: "COALESCE(si.qty_on_hand, 0)",
       qty_reserved: "COALESCE(si.qty_reserved, 0)",
       qty_in_budget: "COALESCE(si.qty_in_budget, 0)",
-      qty_available: "(COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0))",
+      qty_available: "(COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0))",
     };
 
     const qtyEmpresaMatch = /^qty_empresa_(\d+)$/.exec(sortBy);
@@ -161,10 +205,11 @@ export class StockRepository {
               COALESCE(p.descricao, '') AS product_name,
               p.observacao AS descricao,
               COALESCE(e.nome_fantasia, e.razao_social, '') AS empresa_nome,
+              p.preco_custo AS preco_compra,
+              p.preco_sugerido AS preco_sugerido,
               COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
               COALESCE(si.qty_reserved, 0) AS qty_reserved,
-              COALESCE(si.qty_in_budget, 0) AS qty_in_budget,
-              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available
+              COALESCE(si.qty_in_budget, 0) AS qty_in_budget
        FROM produtos p
        CROSS JOIN empresas e
        LEFT JOIN stock_items si ON si.product_id = p.id AND si.empresa_id = e.id
@@ -183,7 +228,18 @@ export class StockRepository {
       params
     );
 
-    return { data: rows, total: countRow?.total ?? 0 };
+    const blockedMap = await getQtyBlockedMap();
+    const data = rows.map((r) => {
+      const qtyBlocked = blockedMap.get(`${r.product_id}-${r.empresa_id}`) || 0;
+      const qtyAvailable = Math.max(0, Number(r.qty_on_hand) - Number(r.qty_reserved) - qtyBlocked);
+      return {
+        ...r,
+        qty_blocked: qtyBlocked,
+        qty_available: qtyAvailable,
+      };
+    });
+
+    return { data, total: countRow?.total ?? 0 };
   }
 
   /**
@@ -334,31 +390,34 @@ export class StockRepository {
   }
 
   /**
-   * Verifica disponibilidade de produto por empresa
+   * Verifica disponibilidade de produto por empresa.
+   * Disponível = Total - Reservado - Bloqueado
    */
   static async checkAvailability(productId, qty, empresaId = 1) {
     const empId = Number(empresaId) || 1;
     const [rows] = await db.query(
-      `SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget,
-              (qty_on_hand - qty_reserved - COALESCE(qty_in_budget, 0)) AS qty_available
+      `SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget
        FROM stock_items
        WHERE product_id = ? AND empresa_id = ?`,
       [productId, empId]
     );
 
-    const balance = rows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_in_budget: 0, qty_available: 0 };
+    const balance = rows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_in_budget: 0 };
+    const blockedMap = await getQtyBlockedMap();
+    const qtyBlocked = blockedMap.get(`${productId}-${empId}`) || 0;
+    const qtyAvailable = Math.max(0, Number(balance.qty_on_hand) - Number(balance.qty_reserved) - qtyBlocked);
+
     return {
-      available: Number(balance.qty_available) >= Number(qty),
-      qtyAvailable: Number(balance.qty_available),
+      available: qtyAvailable >= Number(qty),
+      qtyAvailable,
       qtyOnHand: balance.qty_on_hand,
       qtyReserved: balance.qty_reserved,
     };
   }
 
   /**
-   * Verifica disponibilidade estendida: por empresa, supply_action, total_available
-   * Params: productId, qty, empresa_id (empresa emissora do orçamento)
-   * Returns: { available, by_empresa, supply_action?, empresa_with_stock_id?, total_available }
+   * Verifica disponibilidade estendida: por empresa, supply_action, total_available.
+   * Disponível = Total - Reservado - Bloqueado
    */
   static async getAvailabilityExtended(productId, qty, empresaId) {
     const [rows] = await db.query(
@@ -366,21 +425,25 @@ export class StockRepository {
               COALESCE(si.qty_on_hand, 0) AS qty_on_hand,
               COALESCE(si.qty_reserved, 0) AS qty_reserved,
               COALESCE(si.qty_in_budget, 0) AS qty_in_budget,
-              (COALESCE(si.qty_on_hand, 0) - COALESCE(si.qty_reserved, 0) - COALESCE(si.qty_in_budget, 0)) AS qty_available,
               COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome
        FROM empresas e
        LEFT JOIN stock_items si ON si.product_id = ? AND si.empresa_id = e.id`,
       [productId]
     );
 
-    const byEmpresa = rows.map((r) => ({
-      empresa_id: r.empresa_id,
-      empresa_nome: r.empresa_nome,
-      qty_available: Number(r.qty_available),
-      qty_on_hand: Number(r.qty_on_hand),
-      qty_reserved: Number(r.qty_reserved),
-      qty_in_budget: Number(r.qty_in_budget),
-    }));
+    const blockedMap = await getQtyBlockedMap();
+    const byEmpresa = rows.map((r) => {
+      const qtyBlocked = blockedMap.get(`${productId}-${r.empresa_id}`) || 0;
+      const qtyAvailable = Math.max(0, Number(r.qty_on_hand) - Number(r.qty_reserved) - qtyBlocked);
+      return {
+        empresa_id: r.empresa_id,
+        empresa_nome: r.empresa_nome,
+        qty_available: qtyAvailable,
+        qty_on_hand: Number(r.qty_on_hand),
+        qty_reserved: Number(r.qty_reserved),
+        qty_in_budget: Number(r.qty_in_budget),
+      };
+    });
 
     const totalAvailable = byEmpresa.reduce((sum, e) => sum + e.qty_available, 0);
     const requestedQty = Number(qty) || 0;

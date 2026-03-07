@@ -71,6 +71,10 @@
  *             type: object
  *             required: [empresa_id, json_itens]
  *             properties:
+ *               orcamento_id:
+ *                 type: integer
+ *                 nullable: true
+ *                 description: ID do orçamento vinculado (quando pedido criado a partir de orçamento)
  *               empresa_id:
  *                 type: integer
  *                 description: ID da empresa (obrigatório)

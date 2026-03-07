@@ -88,9 +88,18 @@
  *                       qty_pending_nf:
  *                         type: number
  *                         description: Quantidade faturada aguardando NF
+ *                       preco_compra:
+ *                         type: number
+ *                         description: Preço de compra (preco_custo do produto)
+ *                       preco_sugerido:
+ *                         type: number
+ *                         description: Último preço de venda (sugestão para orçamentos)
+ *                       qty_blocked:
+ *                         type: number
+ *                         description: Quantidade bloqueada (em pedidos de compra vinculados a orçamentos)
  *                       qty_available:
  *                         type: number
- *                         description: Disponível (on_hand - reserved - pending_nf)
+ *                         description: Disponível = Total - Reservado - Bloqueado
  *                 total:
  *                   type: integer
  *       403:

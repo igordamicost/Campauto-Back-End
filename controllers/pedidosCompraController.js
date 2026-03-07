@@ -137,11 +137,22 @@ async function list(req, res) {
     }
   }
 
+  const orcamentoIds = [...new Set(data.map((r) => r.orcamento_id).filter(Boolean))];
+  let orcamentoMap = new Map();
+  if (orcamentoIds.length > 0) {
+    const [orcRows] = await pool.query(
+      `SELECT id, numero_sequencial FROM orcamentos WHERE id IN (${orcamentoIds.map(() => "?").join(",")})`,
+      orcamentoIds
+    );
+    orcamentoMap = new Map(orcRows.map((o) => [o.id, o.numero_sequencial]));
+  }
+
   const mapped = data.map((row) => {
     const u = usuarioMap.get(row.usuario_id);
     const out = {
       ...row,
       usuario: u ? { id: u.id, name: u.name, email: u.email } : null,
+      orcamento_numero: row.orcamento_id ? (orcamentoMap.get(row.orcamento_id) ?? null) : null,
     };
     if (includeEmpresas) {
       out.empresas = row.empresa_id ? (empresaMap.get(row.empresa_id) || null) : null;
@@ -179,6 +190,16 @@ async function getById(req, res) {
     item.empresas = empRows[0] || null;
   }
 
+  if (item.orcamento_id) {
+    const [orcRows] = await pool.query(
+      "SELECT id, numero_sequencial FROM orcamentos WHERE id = ?",
+      [item.orcamento_id]
+    );
+    item.orcamento_numero = orcRows[0]?.numero_sequencial ?? null;
+  } else {
+    item.orcamento_numero = null;
+  }
+
   if (item.json_itens && typeof item.json_itens === "string") {
     try {
       item.json_itens = JSON.parse(item.json_itens);
@@ -191,7 +212,7 @@ async function getById(req, res) {
 }
 
 async function create(req, res) {
-  const { empresa_id, data: dataPedido, observacoes, json_itens } = req.body || {};
+  const { empresa_id, data: dataPedido, observacoes, json_itens, orcamento_id } = req.body || {};
 
   const empresaId = empresa_id != null ? Number(empresa_id) : null;
   if (!empresaId) {
@@ -202,6 +223,14 @@ async function create(req, res) {
   const [empRows] = await pool.query("SELECT id FROM empresas WHERE id = ?", [empresaId]);
   if (!empRows || empRows.length === 0) {
     return res.status(400).json({ message: "empresa_id inválido: empresa não encontrada" });
+  }
+
+  const orcamentoId = orcamento_id != null ? Number(orcamento_id) : null;
+  if (orcamentoId != null && orcamentoId > 0) {
+    const [orcRows] = await pool.query("SELECT id FROM orcamentos WHERE id = ?", [orcamentoId]);
+    if (!orcRows || orcRows.length === 0) {
+      return res.status(400).json({ message: "orcamento_id inválido: orçamento não encontrado" });
+    }
   }
 
   const { parsed: itens, error: errItens } = normalizeJsonItens(json_itens);
@@ -229,6 +258,7 @@ async function create(req, res) {
     empresa_id: empresaId,
     numero_sequencial: numeroSequencial,
   };
+  if (orcamentoId != null) payload.orcamento_id = orcamentoId;
 
   const id = await baseService.create(TABLE, payload);
   if (!id) return res.status(409).json({ message: "Erro ao criar pedido" });
@@ -248,9 +278,20 @@ async function update(req, res) {
     return res.status(404).json({ message: "Not found" });
   }
 
-  const { empresa_id, data: dataPedido, observacoes, json_itens, status } = req.body || {};
+  const { empresa_id, data: dataPedido, observacoes, json_itens, status, orcamento_id } = req.body || {};
   const payload = {};
 
+  if (orcamento_id !== undefined) {
+    const orcId = orcamento_id != null ? Number(orcamento_id) : null;
+    if (orcId != null && orcId > 0) {
+      const poolUpd = getPool();
+      const [orcRows] = await poolUpd.query("SELECT id FROM orcamentos WHERE id = ?", [orcId]);
+      if (!orcRows || orcRows.length === 0) {
+        return res.status(400).json({ message: "orcamento_id inválido: orçamento não encontrado" });
+      }
+    }
+    payload.orcamento_id = orcId;
+  }
   if (empresa_id !== undefined) {
     const empresaId = empresa_id != null ? Number(empresa_id) : null;
     if (!empresaId) {

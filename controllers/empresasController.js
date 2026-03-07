@@ -1,8 +1,59 @@
 import * as baseService from "../services/baseService.js";
+import { getPool } from "../db.js";
 import { executarVerificacaoFiscalEmpresas } from "../src/services/empresasFiscalCheckJob.service.js";
 import { FocusNfRepository } from "../src/repositories/focusNf.repository.js";
 
 const TABLE = "empresas";
+
+/** Tabelas que referenciam empresas e impedem exclusão */
+const TABELAS_REFERENCIADAS = [
+  { tabela: "stock_items", col: "empresa_id", label: "itens de estoque" },
+  { tabela: "stock_balances", col: "empresa_id", label: "saldos de estoque (legado)" },
+  { tabela: "stock_movements", col: "empresa_id", label: "movimentações de estoque" },
+  { tabela: "orcamentos", col: "empresa_id", label: "orçamentos" },
+  { tabela: "pedidos_compra", col: "empresa_id", label: "pedidos de compra" },
+  { tabela: "elevadores", col: "empresa_id", label: "elevadores" },
+  { tabela: "reservations", col: "empresa_id", label: "reservas" },
+  { tabela: "transfer_orders", where: "empresa_origem_id = ? OR empresa_destino_id = ?", label: "ordens de transferência" },
+];
+
+async function verificarReferenciasEmpresa(empresaId) {
+  const pool = getPool();
+  const bloqueios = [];
+
+  for (const ref of TABELAS_REFERENCIADAS) {
+    try {
+      const [tblRows] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM information_schema.tables
+         WHERE table_schema = DATABASE() AND table_name = ?`,
+        [ref.tabela]
+      );
+      if (tblRows[0]?.cnt === 0) continue;
+
+      let cnt = 0;
+      if (ref.where) {
+        const [[r]] = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM \`${ref.tabela}\` WHERE ${ref.where}`,
+          [empresaId, empresaId]
+        );
+        cnt = r?.cnt ?? 0;
+      } else {
+        const [[r]] = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM \`${ref.tabela}\` WHERE \`${ref.col}\` = ?`,
+          [empresaId]
+        );
+        cnt = r?.cnt ?? 0;
+      }
+      if (cnt > 0) {
+        bloqueios.push({ label: ref.label, quantidade: cnt });
+      }
+    } catch {
+      // Tabela ou coluna pode não existir
+    }
+  }
+
+  return bloqueios;
+}
 
 function dispararJobVerificacaoFiscal() {
   executarVerificacaoFiscalEmpresas().catch((err) => {
@@ -98,8 +149,24 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
-  const ok = await baseService.remove(TABLE, req.params.id);
-  if (!ok) return res.status(404).json({ message: "Not found" });
+  const empresaId = Number(req.params.id);
+  if (!empresaId) return res.status(400).json({ message: "ID inválido" });
+
+  const existe = await baseService.getById(TABLE, empresaId);
+  if (!existe) return res.status(404).json({ message: "Empresa não encontrada" });
+
+  const bloqueios = await verificarReferenciasEmpresa(empresaId);
+  if (bloqueios.length > 0) {
+    const detalhes = bloqueios.map((b) => `${b.label} (${b.quantidade})`).join(", ");
+    return res.status(409).json({
+      message: "Não é possível excluir esta empresa pois existem registros vinculados.",
+      bloqueios: bloqueios.map((b) => ({ label: b.label, quantidade: b.quantidade })),
+      detalhes,
+    });
+  }
+
+  const ok = await baseService.remove(TABLE, empresaId);
+  if (!ok) return res.status(404).json({ message: "Empresa não encontrada" });
   dispararJobVerificacaoFiscal();
   res.json({ message: "Deleted" });
 }

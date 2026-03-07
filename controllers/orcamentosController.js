@@ -715,6 +715,41 @@ async function updateStatus(req, res) {
 
   const ok = await baseService.update(TABLE, req.params.id, { status });
   if (!ok) return res.status(404).json({ message: "Not found" });
+
+  // Ao faturar: atualizar preco_sugerido dos produtos com o preco_unitario de cada item
+  if (status === "Faturado") {
+    try {
+      const pool = getPool();
+      const orcamentoId = Number(req.params.id);
+      const [orcRows] = await pool.query("SELECT json_itens FROM orcamentos WHERE id = ?", [orcamentoId]);
+      if (orcRows.length > 0 && orcRows[0].json_itens) {
+        let jsonItens = orcRows[0].json_itens;
+        if (typeof jsonItens === "string") {
+          try {
+            jsonItens = JSON.parse(jsonItens || "[]");
+          } catch {
+            jsonItens = [];
+          }
+        }
+        if (Array.isArray(jsonItens)) {
+          for (const item of jsonItens) {
+            const produtoId = Number(item?.produto_id ?? item?.product_id);
+            const precoUnit = item?.preco_unitario ?? item?.valor_unitario ?? item?.preco;
+            if (!produtoId || precoUnit == null) continue;
+            const valor = Number(precoUnit);
+            if (Number.isNaN(valor)) continue;
+            await pool.query(
+              "UPDATE produtos SET preco_sugerido = ? WHERE id = ?",
+              [valor, produtoId]
+            );
+          }
+        }
+      }
+    } catch (err) {
+      if (err?.code !== "ER_BAD_FIELD_ERROR") console.warn("[orcamentos] preco_sugerido:", err?.message);
+    }
+  }
+
   res.json({ message: "Status updated" });
 }
 

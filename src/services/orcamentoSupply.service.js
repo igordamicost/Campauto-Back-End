@@ -1,5 +1,5 @@
 import { db } from "../config/database.js";
-import { StockRepository } from "../repositories/stock.repository.js";
+import { StockRepository, getQtyBlockedMap } from "../repositories/stock.repository.js";
 
 /**
  * Extrai itens com produto_id e quantidade de json_itens
@@ -78,9 +78,11 @@ export class OrcamentoSupplyService {
       [...produtoIds, empresaId]
     );
 
+    const blockedMap = await getQtyBlockedMap();
     const saldoByProduto = new Map();
     for (const r of stockRows) {
-      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - Number(r.qty_in_budget);
+      const qtyBlocked = blockedMap.get(`${r.product_id}-${empresaId}`) || 0;
+      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - qtyBlocked;
       saldoByProduto.set(r.product_id, Math.max(0, disponivel));
     }
 
@@ -153,9 +155,11 @@ export class OrcamentoSupplyService {
       params
     );
 
+    const blockedMap = await getQtyBlockedMap();
     const saldoByKey = new Map();
     for (const r of stockRows) {
-      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - Number(r.qty_in_budget);
+      const qtyBlocked = blockedMap.get(`${r.product_id}-${r.empresa_id}`) || 0;
+      const disponivel = Number(r.qty_on_hand) - Number(r.qty_reserved) - qtyBlocked;
       saldoByKey.set(`${r.empresa_id}-${r.product_id}`, Math.max(0, disponivel));
     }
 
@@ -316,17 +320,19 @@ export class OrcamentoSupplyService {
         throw new Error("Orçamento sem itens de peças para dar baixa");
       }
 
+      const blockedMap = await getQtyBlockedMap();
       for (const item of jsonItens) {
         const produtoId = Number(item?.produto_id ?? item?.product_id);
         const quantidade = Number(item?.quantidade ?? item?.quantity) || 0;
         if (!produtoId || quantidade <= 0) continue;
 
         const [balRows] = await connection.query(
-          "SELECT qty_on_hand, qty_reserved, COALESCE(qty_in_budget, 0) AS qty_in_budget FROM stock_items WHERE product_id = ? AND empresa_id = ?",
+          "SELECT qty_on_hand, qty_reserved FROM stock_items WHERE product_id = ? AND empresa_id = ?",
           [produtoId, empresaId]
         );
-        const bal = balRows[0] || { qty_on_hand: 0, qty_reserved: 0, qty_in_budget: 0 };
-        const disponivel = bal.qty_on_hand - bal.qty_reserved - bal.qty_in_budget;
+        const bal = balRows[0] || { qty_on_hand: 0, qty_reserved: 0 };
+        const qtyBlocked = blockedMap.get(`${produtoId}-${empresaId}`) || 0;
+        const disponivel = Math.max(0, bal.qty_on_hand - bal.qty_reserved - qtyBlocked);
         if (disponivel < quantidade) {
           throw new Error(
             `Produto ${produtoId}: quantidade insuficiente (disponível: ${disponivel}, solicitado: ${quantidade})`
